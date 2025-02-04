@@ -1,4 +1,7 @@
+pub const Token = @This();
+
 const std = @import("std");
+
 pub const TokenType = enum {
     ILLEGAL,
     EOF,
@@ -63,30 +66,28 @@ pub const TokenType = enum {
     }
 };
 
-pub const Token = struct {
-    Type: TokenType,
-    Literal: []const u8,
-    Line: usize,
-    Length: usize,
-    const Self = @This();
-    pub fn newToken(tokenType: TokenType, lit: ?[]const u8, line: usize) !Self {
-        if (lit == null) {
-            return Self{
-                .Type = tokenType,
-                .Literal = tokenType.toTokenLiteral(),
-                .Line = line,
-                .Length = tokenType.toTokenLiteral().len,
-            };
-        } else {
-            return Self{
-                .Type = tokenType,
-                .Literal = lit.?,
-                .Line = line,
-                .Length = lit.?.len,
-            };
-        }
+Type: TokenType,
+Literal: []const u8,
+Line: usize,
+Length: usize,
+const Self = @This();
+pub fn newToken(tokenType: TokenType, lit: ?[]const u8, line: usize) !Self {
+    if (lit == null) {
+        return Self{
+            .Type = tokenType,
+            .Literal = tokenType.toTokenLiteral(),
+            .Line = line,
+            .Length = tokenType.toTokenLiteral().len,
+        };
+    } else {
+        return Self{
+            .Type = tokenType,
+            .Literal = lit.?,
+            .Line = line,
+            .Length = lit.?.len,
+        };
     }
-};
+}
 
 const Keyword = struct { Key: []const u8, Value: TokenType };
 const map = [_]Keyword{

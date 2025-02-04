@@ -1,5 +1,8 @@
+const Lexer = @This();
+
 const std = @import("std");
 const testing = std.testing;
+
 const tokens = @import("tokens.zig");
 const token = tokens.Token;
 const tokenType = tokens.TokenType;
@@ -11,11 +14,10 @@ readPosition: u32,
 ch: u8,
 tokens: std.ArrayList(token),
 line: usize,
-const Self = @This();
 
-pub fn init(alloc: std.mem.Allocator, input: []const u8) !*Self {
-    var l = try alloc.create(Self);
-    l.* = Self{
+pub fn init(alloc: std.mem.Allocator, input: []const u8) !*Lexer {
+    var l = try alloc.create(Lexer);
+    l.* = Lexer{
         .alloc = alloc,
         .input = input,
         .position = 0,
@@ -29,12 +31,12 @@ pub fn init(alloc: std.mem.Allocator, input: []const u8) !*Self {
     return l;
 }
 
-pub fn destroy(self: *Self) void {
-    self.tokens.deinit();
-    self.alloc.destroy(self);
-}
+//pub fn destroy(self: *Lexer) void {
+//    self.tokens.deinit();
+//    self.alloc.destroy(self);
+//}
 
-pub fn tokenize(self: *Self) !void {
+pub fn tokenize(self: *Lexer) !void {
     var tok = tokens.Token{
         .Literal = "",
         .Type = tokens.TokenType.ILLEGAL,
@@ -46,7 +48,7 @@ pub fn tokenize(self: *Self) !void {
     }
 }
 
-fn readIdentifier(self: *Self) []const u8 {
+fn readIdentifier(self: *Lexer) []const u8 {
     const position = self.position;
     while (isLetter(self.ch)) {
         self.readChar();
@@ -54,7 +56,7 @@ fn readIdentifier(self: *Self) []const u8 {
     return self.input[position..self.position];
 }
 
-pub fn nextToken(self: *Self) !token {
+pub fn nextToken(self: *Lexer) !token {
     var tok: token = token{
         .Literal = "",
         .Type = tokenType.ILLEGAL,
@@ -66,10 +68,8 @@ pub fn nextToken(self: *Self) !token {
         ';' => tok = try token.newToken(tokenType.SEMICOLON, null, self.line),
         '=' => {
             if (self.peekChar() == '=') {
-                var buf: [2]u8 = .{ self.ch, 0 };
+                tok = try token.newToken(tokenType.EQ, null, self.line);
                 self.readChar();
-                buf[1] = self.ch;
-                tok = try token.newToken(tokenType.EQ, &buf, self.line);
             } else {
                 tok = try token.newToken(tokenType.ASSIGN, null, self.line);
             }
@@ -83,10 +83,8 @@ pub fn nextToken(self: *Self) !token {
         '-' => tok = try token.newToken(tokenType.MINUS, null, self.line),
         '!' => {
             if (self.peekChar() == '=') {
-                var buf: [2]u8 = .{ self.ch, 0 };
+                tok = try token.newToken(tokenType.NOT_EQ, null, self.line);
                 self.readChar();
-                buf[1] = self.ch;
-                tok = try token.newToken(tokenType.NOT_EQ, &buf, self.line);
             } else {
                 tok = try token.newToken(tokenType.BANG, null, self.line);
             }
@@ -119,7 +117,7 @@ pub fn nextToken(self: *Self) !token {
     return tok;
 }
 
-fn readChar(self: *Self) void {
+fn readChar(self: *Lexer) void {
     if (self.readPosition >= self.input.len) {
         self.ch = 0;
     } else {
@@ -129,7 +127,7 @@ fn readChar(self: *Self) void {
     self.readPosition += 1;
 }
 
-fn readNumber(self: *Self) []const u8 {
+fn readNumber(self: *Lexer) []const u8 {
     const position = self.position;
     while (isDigit(self.ch)) {
         self.readChar();
@@ -137,14 +135,14 @@ fn readNumber(self: *Self) []const u8 {
     return self.input[position..self.position];
 }
 
-fn skipWhitespace(self: *Self) void {
+fn skipWhitespace(self: *Lexer) void {
     while (self.ch == ' ' or self.ch == '\t' or self.ch == '\n' or self.ch == '\r') {
         if (self.ch == '\n') self.line += 1;
         self.readChar();
     }
 }
 
-fn peekChar(self: *Self) u8 {
+fn peekChar(self: *Lexer) u8 {
     if (self.readPosition >= self.input.len) {
         return 0;
     } else {
@@ -163,7 +161,9 @@ fn isDigit(ch: u8) bool {
 const TestToken = struct { expectedType: tokenType, expectedLiteral: []const u8 };
 
 test "test lexer" {
-    const testingAlloc = std.testing.allocator;
+    var testingArena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer testingArena.deinit();
+    const testingAlloc = testingArena.allocator();
 
     const input: []const u8 =
         \\let five = 5;
@@ -263,8 +263,7 @@ test "test lexer" {
         .{ .expectedType = tokenType.EOF, .expectedLiteral = "\x00" },
     };
 
-    const lex = try Self.init(testingAlloc, input);
-    defer lex.destroy();
+    const lex = try Lexer.init(testingAlloc, input);
 
     for (testTokens) |testToken| {
         const tok = try lex.nextToken();
