@@ -4,7 +4,7 @@ const std = @import("std");
 
 const Value = @import("value.zig");
 
-const OpCode = enum(u8) {
+pub const OpCode = enum(u8) {
     OP_CONSTANT,
     OP_ADD,
     OP_SUBTRACT,

@@ -9,3 +9,12 @@ const ValueType = enum {
     VAL_STRING,
     VAL_NIL,
 };
+
+pub const As = union {
+    boolean: bool,
+    integer: i64,
+    string: []const u8,
+};
+
+valType: ValueType,
+as: As,
