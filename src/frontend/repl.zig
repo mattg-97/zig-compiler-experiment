@@ -6,7 +6,8 @@ const VM = @import("../backend/vm.zig");
 const Parser = @import("parser/parser.zig");
 const tokens = @import("tokens.zig");
 
-pub fn startRepl(alloc: std.mem.Allocator) !void {
+pub fn startRepl(arena: *std.heap.ArenaAllocator) !void {
+    const alloc = arena.*.allocator();
     std.debug.print("Welcome to zig compiler repl: \\q to quit repl.\n", .{});
     var input: []u8 = undefined;
 
@@ -14,11 +15,11 @@ pub fn startRepl(alloc: std.mem.Allocator) !void {
         std.debug.print(">> ", .{});
         var buf: [1024]u8 = undefined;
         input = try getInput(&buf);
-        try processInput(alloc, input);
+        try processInput(arena, alloc, input);
     }
 }
 
-fn processInput(alloc: std.mem.Allocator, input: []u8) !void {
+fn processInput(arena: *std.heap.ArenaAllocator, alloc: std.mem.Allocator, input: []u8) !void {
     var tok = tokens.Token{
         .Literal = "",
         .Type = tokens.TokenType.ILLEGAL,
@@ -36,6 +37,7 @@ fn processInput(alloc: std.mem.Allocator, input: []u8) !void {
     try bc.generate();
     const vm = try VM.init(alloc, bc);
     _ = try vm.run();
+    std.debug.assert(arena.*.reset(std.heap.ArenaAllocator.ResetMode.free_all));
 }
 
 fn getInput(buf: *[1024]u8) ![]u8 {
