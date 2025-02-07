@@ -129,6 +129,36 @@ fn parsePrefix(self: *Parser) !*AST.Expression {
     return exprPointer;
 }
 
+fn parseBooleanExpression(self: *Parser) !*AST.Expression {
+    const expr = try self.alloc.create(AST.Expression);
+    const boolExpr: AST.BooleanExpression = .{ .token = self.current_token, .value = (self.current_token.Type == TokenType.TRUE) };
+    expr.* = .{ .Bool = boolExpr };
+    return expr;
+}
+
+//fn parseBlockStatement(self: *Parser) !std.ArrayList(AST.Statement) {
+//    const block = std.ArrayList(AST.Statement).init(self.alloc);
+//    self.nextToken();
+//    if (self.current_token.Type == TokenType.LBRACE) self.nextToken();
+//
+//    while (!self.current_token.Type == TokenType.RBRACE and !self.current_token.Type == TokenType.EOF) {
+//        const stmt = try self.parseStatement();
+//        try block.append(stmt.*);
+//        if (self.peek_token.Type == TokenType.EOF) self.nextToken();
+//        self.nextToken();
+//    }
+//    return block;
+//}
+//
+//fn parseIfExpression(self: *Parser) !*AST.Expression {
+//    const expr = try self.alloc.create(AST.Expression);
+//    try self.expectPeek(TokenType.LPAREN);
+//    self.nextToken();
+//    expr.*.If = .{ .condition = try self.parseExpression(AST.Precedence.LOWEST) };
+//    try self.expectPeek(TokenType.RPAREN);
+//    expr.*.If = .{ .consequence = try self.parseBlockStatement() };
+//}
+
 fn parseInfix(self: *Parser, left: *AST.Expression) !*AST.Expression {
     const infixToken = self.current_token;
     const prec = AST.getTokenPrecedence(&self.current_token);
@@ -155,6 +185,7 @@ fn parseExpression(self: *Parser, precedence: AST.Precedence) anyerror!*AST.Expr
         TokenType.INT => left = try self.parseIntegerExpression(),
         TokenType.IDENT => left = try self.parseIdent(),
         TokenType.MINUS, TokenType.BANG => left = try self.parsePrefix(),
+        TokenType.TRUE, TokenType.FALSE => left = try self.parseBooleanExpression(),
         else => std.debug.print("TOKEN: {s} type: {s}\n", .{ self.current_token.Literal, std.enums.tagName(TokenType, self.current_token.Type).? }),
     }
     while (self.peek_token.Type != TokenType.SEMICOLON and @intFromEnum(precedence) < @intFromEnum(AST.getTokenPrecedence(&self.peek_token))) {

@@ -2,10 +2,10 @@ const ByteCode = @This();
 
 const std = @import("std");
 
-const Value = @import("utils/value.zig");
+const Value = @import("types/value.zig");
 const Token = @import("../frontend/tokens.zig");
 const TokenType = Token.TokenType;
-const Chunk = @import("utils/chunk.zig");
+const Chunk = @import("types/chunk.zig");
 const OpCode = Chunk.OpCode;
 const AST = @import("../frontend/parser/ast.zig");
 const Program = AST.Program;
@@ -46,11 +46,16 @@ fn generateInfixExpression(self: *ByteCode, expr: AST.InfixExpression) !void {
     if (std.mem.eql(u8, expr.operator, TokenType.ASTERISK.toTokenLiteral())) try self.emitByte(OpCode.OP_MULTIPLY.asByte(), expr.token.Line);
 }
 
+fn generateBooleanExpression(self: *ByteCode, expr: AST.BooleanExpression) !void {
+    try self.emitConstant(Value.boolValue(expr.value), expr.token.Line);
+}
+
 fn generateExpression(self: *ByteCode, expr: AST.Expression) anyerror!void {
     switch (expr) {
         .Integer => |e| try self.generateIntegerExpression(e),
         .Ident => |e| try self.generateIdentifierExpression(e),
         .Infix => |e| try self.generateInfixExpression(e),
+        .Bool => |e| try self.generateBooleanExpression(e),
         else => std.debug.print("Not done yet", .{}),
     }
 }

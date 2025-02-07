@@ -3,9 +3,9 @@ const VM = @This();
 const std = @import("std");
 const hash = std.hash.Fnv1a_32.hash;
 
-const Chunk = @import("utils/chunk.zig");
+const Chunk = @import("types/chunk.zig");
 const OpCode = Chunk.OpCode;
-const Value = @import("utils/value.zig");
+const Value = @import("types/value.zig");
 const ByteCode = @import("bytecode.zig");
 
 alloc: std.mem.Allocator,
@@ -56,6 +56,13 @@ fn peek(self: *VM) Value {
 
 pub fn run(self: *VM) !Result {
     while (true) {
+        std.debug.print("           ", .{});
+        for (self.stack.items) |slot| {
+            std.debug.print("[", .{});
+            Value.printValue(slot);
+            std.debug.print("]", .{});
+        }
+        std.debug.print("\n", .{});
         const instruction = self.readByte();
         switch (instruction) {
             OpCode.OP_CONSTANT.asByte() => {
@@ -72,23 +79,23 @@ pub fn run(self: *VM) !Result {
                 const b = Value.asInt(self.stack.pop());
                 try self.stack.append(Value.intValue(a - b));
             },
-            @as(u8, @intFromEnum(OpCode.OP_MULTIPLY)) => {
+            OpCode.OP_MULTIPLY.asByte() => {
                 const a = Value.asInt(self.stack.pop());
                 const b = Value.asInt(self.stack.pop());
                 try self.stack.append(Value.intValue(a * b));
             },
-            @as(u8, @intFromEnum(OpCode.OP_DIVIDE)) => {
+            OpCode.OP_DIVIDE.asByte() => {
                 const a = Value.asInt(self.stack.pop());
                 const b = Value.asInt(self.stack.pop());
                 try self.stack.append(Value.intValue(@divExact(a, b)));
             },
-            @as(u8, @intFromEnum(OpCode.OP_NEGATE)) => {
+            OpCode.OP_NEGATE.asByte() => {
                 try self.stack.append(self.stack.pop());
             },
-            @as(u8, @intFromEnum(OpCode.OP_POP)) => {
+            OpCode.OP_POP.asByte() => {
                 _ = self.stack.pop();
             },
-            @as(u8, @intFromEnum(OpCode.OP_PRINT)) => {
+            OpCode.OP_PRINT.asByte() => {
                 Value.printValue(self.stack.pop());
             },
             OpCode.OP_SET_GLOBAL.asByte() => {
@@ -115,7 +122,7 @@ pub fn run(self: *VM) !Result {
                 try self.globals.put(hashKey, global.*);
                 _ = self.stack.pop();
             },
-            @as(u8, @intFromEnum(OpCode.OP_RETURN)) => return Result.OK,
+            OpCode.OP_RETURN.asByte() => return Result.OK,
             else => @panic("SHIT"),
         }
     }

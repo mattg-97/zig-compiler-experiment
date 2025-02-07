@@ -51,10 +51,28 @@ pub const Statement = union(enum) {
     }
 };
 
+pub const IfExpression = struct {
+    token: Token,
+    condition: *Expression,
+    consequence: *Statement,
+    alternative: *Statement,
+    pub fn tokenLiteral(self: IfExpression) []const u8 {
+        return self.token.Literal;
+    }
+};
+
 pub const IntegerExpression = struct {
     value: i64,
     token: Token,
     pub fn tokenLiteral(self: IntegerExpression) []const u8 {
+        return self.token.Literal;
+    }
+};
+
+pub const BooleanExpression = struct {
+    value: bool,
+    token: Token,
+    pub fn tokenLiteral(self: BooleanExpression) []const u8 {
         return self.token.Literal;
     }
 };
@@ -64,12 +82,16 @@ pub const Expression = union(enum) {
     Ident: Identifier,
     Prefix: PrefixExpression,
     Infix: InfixExpression,
+    If: IfExpression,
+    Bool: BooleanExpression,
     pub fn tokenLiteral(self: Expression) []const u8 {
         return switch (self) {
             IntegerExpression => |expr| expr.tokenLiteral(),
             Identifier => |expr| expr.tokenLiteral(),
             PrefixExpression => |expr| expr.tokenLiteral(),
             InfixExpression => |expr| expr.tokenLiteral(),
+            IfExpression => |expr| expr.tokenLiteral(),
+            BooleanExpression => |expr| expr.tokenLiteral(),
         };
     }
 };

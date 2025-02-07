@@ -20,17 +20,8 @@ pub fn startRepl(arena: *std.heap.ArenaAllocator) !void {
 }
 
 fn processInput(arena: *std.heap.ArenaAllocator, alloc: std.mem.Allocator, input: []u8) !void {
-    var tok = tokens.Token{
-        .Literal = "",
-        .Type = tokens.TokenType.ILLEGAL,
-        .Line = 0,
-        .Length = 0,
-    };
     const lex = try lexer.init(alloc, input);
-    while (tok.Type != tokens.TokenType.EOF) {
-        tok = try lex.nextToken();
-        std.debug.print("Token -> Type: {s}, Literal: {s}\n", .{ std.enums.tagName(tokens.TokenType, tok.Type).?, tok.Literal });
-    }
+    try lex.tokenize();
     const parser = try Parser.init(alloc, lex);
     const program = try parser.parseProgram();
     const bc = try ByteCode.init(alloc, program);

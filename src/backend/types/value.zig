@@ -27,6 +27,10 @@ pub fn asBool(value: Value) bool {
     return value.as.boolean;
 }
 
+pub fn boolValue(b: bool) Value {
+    return Value{ .valType = ValueType.VAL_BOOL, .as = .{ .boolean = b } };
+}
+
 pub fn isInt(value: Value) bool {
     return value.valType == ValueType.VAL_INT;
 }
@@ -65,10 +69,10 @@ pub fn printValue(value: Value) void {
     switch (value.valType) {
         ValueType.VAL_BOOL => {
             const toPrint: []const u8 = if (asBool(value)) "true" else "false";
-            std.debug.print("{s}\n", .{toPrint});
+            std.debug.print("{s}", .{toPrint});
         },
-        ValueType.VAL_INT => std.debug.print("{d}\n", .{asInt(value)}),
-        ValueType.VAL_STRING => std.debug.print("{s}\n", .{asString(value)}),
-        else => std.debug.print("Unable to print value\n", .{}),
+        ValueType.VAL_INT => std.debug.print("{d}", .{asInt(value)}),
+        ValueType.VAL_STRING => std.debug.print("{s}", .{asString(value)}),
+        else => std.debug.print("Unable to print value", .{}),
     }
 }

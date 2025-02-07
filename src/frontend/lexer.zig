@@ -14,6 +14,7 @@ readPosition: u32,
 ch: u8,
 tokens: std.ArrayList(token),
 line: usize,
+const log = std.log.scoped(.lexer);
 
 pub fn init(alloc: std.mem.Allocator, input: []const u8) !*Lexer {
     var l = try alloc.create(Lexer);
@@ -46,6 +47,7 @@ pub fn tokenize(self: *Lexer) !void {
     while (tok.Type != tokens.TokenType.EOF) {
         tok = try self.nextToken();
     }
+    log.info("Lexing completed.\n", .{});
 }
 
 fn readIdentifier(self: *Lexer) []const u8 {
@@ -99,12 +101,14 @@ pub fn nextToken(self: *Lexer) !token {
                 tok.Literal = self.readIdentifier();
                 tok.Type = tokens.lookupIdent(tok.Literal);
                 tok.Line = self.line;
+                log.debug("Token created: {s} of type {s}\n", .{ tok.Literal, tok.Type.toTokenLiteral() });
                 try self.tokens.append(tok);
                 return tok;
             } else if (isDigit(self.ch)) {
                 tok.Type = tokenType.INT;
                 tok.Literal = self.readNumber();
                 tok.Line = self.line;
+                log.debug("Token created: {s} of type {s}\n", .{ tok.Literal, tok.Type.toTokenLiteral() });
                 try self.tokens.append(tok);
                 return tok;
             } else {
@@ -113,6 +117,7 @@ pub fn nextToken(self: *Lexer) !token {
         },
     }
     self.readChar();
+    log.debug("Token created: {s} of type {s}\n", .{ tok.Literal, tok.Type.toTokenLiteral() });
     try self.tokens.append(tok);
     return tok;
 }
