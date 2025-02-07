@@ -90,6 +90,16 @@ fn parseLetStatement(self: *Parser) !*AST.Statement {
     return stmtPointer;
 }
 
+fn parsePrintStatement(self: *Parser) !*AST.Statement {
+    self.nextToken();
+    const printStmt: AST.PrintStatement = .{ .token = self.current_token, .value = try self.parseExpression(AST.Precedence.LOWEST) };
+    const stmt: AST.Statement = .{ .Print = printStmt };
+    while (self.current_token.Type != TokenType.SEMICOLON) : (self.nextToken()) {}
+    const stmtPointer = try self.alloc.create(AST.Statement);
+    stmtPointer.* = stmt;
+    return stmtPointer;
+}
+
 fn parseReturnStatement(self: *Parser) !*AST.Statement {
     const returnStmt: AST.ReturnStatement = .{ .token = self.current_token, .returnValue = try self.parseExpression(AST.Precedence.LOWEST) };
     const stmt: AST.Statement = .{ .Return = returnStmt };
@@ -173,6 +183,7 @@ fn parseStatement(self: *Parser) !*AST.Statement {
     return switch (self.current_token.Type) {
         TokenType.LET => try self.parseLetStatement(),
         TokenType.RETURN => try self.parseReturnStatement(),
+        TokenType.PRINT => try self.parsePrintStatement(),
         else => try self.parseExpressionStatement(),
     };
 }

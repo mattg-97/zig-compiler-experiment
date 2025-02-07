@@ -39,12 +39,14 @@ pub const Statement = union(enum) {
     Let: LetStatement,
     Return: ReturnStatement,
     Expr: ExpressionStatement,
+    Print: PrintStatement,
     //Other statement variants
     pub fn tokenLiteral(self: Statement) []const u8 {
         return switch (self) {
             .Let => |stmt| stmt.tokenLiteral(),
             .Return => |stmt| stmt.tokenLiteral(),
             .Expr => |stmt| stmt.tokenLiteral(),
+            .Print => |stmt| stmt.tokenLiteral(),
         };
     }
 };
@@ -69,6 +71,14 @@ pub const Expression = union(enum) {
             PrefixExpression => |expr| expr.tokenLiteral(),
             InfixExpression => |expr| expr.tokenLiteral(),
         };
+    }
+};
+
+pub const PrintStatement = struct {
+    token: Token,
+    value: *Expression,
+    pub fn tokenLiteral(self: PrintStatement) []const u8 {
+        return self.token.Literal;
     }
 };
 

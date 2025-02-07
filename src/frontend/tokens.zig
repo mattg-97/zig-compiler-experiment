@@ -31,6 +31,7 @@ pub const TokenType = enum {
     EQ,
     NOT_EQ,
     ERROR,
+    PRINT,
     pub fn toTokenLiteral(self: TokenType) []const u8 {
         const tokenStr = switch (self) {
             TokenType.EOF => "\x00",
@@ -60,6 +61,7 @@ pub const TokenType = enum {
             TokenType.EQ => "==",
             TokenType.NOT_EQ => "!=",
             TokenType.ERROR => "ERROR",
+            TokenType.PRINT => "PRINT",
             else => "ILLEGAL",
         };
         return tokenStr;
@@ -98,6 +100,7 @@ const map = [_]Keyword{
     .{ .Key = "if", .Value = TokenType.IF },
     .{ .Key = "else", .Value = TokenType.ELSE },
     .{ .Key = "return", .Value = TokenType.RETURN },
+    .{ .Key = "print", .Value = TokenType.PRINT },
 };
 
 pub fn lookupIdent(key: []const u8) TokenType {

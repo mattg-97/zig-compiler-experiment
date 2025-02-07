@@ -15,7 +15,7 @@ ip: std.ArrayList(u8),
 ipCurrent: usize,
 stack: std.ArrayList(Value),
 strings: std.AutoHashMap(usize, []const u8),
-globals: std.AutoHashMap(usize, []const u8),
+globals: std.AutoHashMap(usize, Value),
 
 const Result = enum {
     OK,
@@ -48,6 +48,10 @@ fn readConstant(self: *VM) Value {
 
 fn readString(self: *VM) []const u8 {
     return Value.asString(self.readConstant());
+}
+
+fn peek(self: *VM) Value {
+    return self.stack.items[self.stack.items.len - 1];
 }
 
 pub fn run(self: *VM) !Result {
@@ -90,7 +94,25 @@ pub fn run(self: *VM) !Result {
             OpCode.OP_SET_GLOBAL.asByte() => {
                 const name = self.readString();
                 const hashKey = @as(usize, hash(name));
-                try self.globals.put(hashKey, name);
+                try self.globals.put(hashKey, self.peek());
+                _ = self.stack.pop();
+            },
+            OpCode.OP_GET_GLOBAL.asByte() => {
+                const name = self.readString();
+                const hashKey = @as(usize, hash(name));
+                const val = self.globals.get(hashKey);
+                if (val == null) {
+                    std.debug.print("Undefined variable: {s}\n", .{name});
+                    return Result.RUNTIME_ERROR;
+                }
+                try self.stack.append(val.?);
+            },
+            OpCode.OP_DEFINE_GLOBAL.asByte() => {
+                const name = self.readString();
+                const global = try self.alloc.create(Value);
+                global.* = self.peek();
+                const hashKey = @as(usize, hash(name));
+                try self.globals.put(hashKey, global.*);
                 _ = self.stack.pop();
             },
             @as(u8, @intFromEnum(OpCode.OP_RETURN)) => return Result.OK,
