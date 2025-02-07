@@ -18,6 +18,9 @@ pub const OpCode = enum(u8) {
     OP_DEFINE_GLOBAL,
     OP_SET_GLOBAL,
     OP_GREATER,
+    pub fn asByte(self: OpCode) u8 {
+        return @as(u8, @intFromEnum(self));
+    }
 };
 
 alloc: std.mem.Allocator,

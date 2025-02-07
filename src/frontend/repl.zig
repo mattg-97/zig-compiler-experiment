@@ -1,6 +1,8 @@
 const std = @import("std");
 
 const lexer = @import("lexer.zig");
+const ByteCode = @import("../backend/bytecode.zig");
+const VM = @import("../backend/vm.zig");
 const Parser = @import("parser/parser.zig");
 const tokens = @import("tokens.zig");
 
@@ -29,7 +31,11 @@ fn processInput(alloc: std.mem.Allocator, input: []u8) !void {
         std.debug.print("Token -> Type: {s}, Literal: {s}\n", .{ std.enums.tagName(tokens.TokenType, tok.Type).?, tok.Literal });
     }
     const parser = try Parser.init(alloc, lex);
-    _ = try parser.parseProgram();
+    const program = try parser.parseProgram();
+    const bc = try ByteCode.init(alloc, program);
+    try bc.generate();
+    const vm = try VM.init(alloc, bc);
+    _ = try vm.run();
 }
 
 fn getInput(buf: *[1024]u8) ![]u8 {

@@ -43,8 +43,8 @@ pub fn init(alloc: std.mem.Allocator, lexer: *Lexer) !*Parser {
         .current = 0,
         .program = try AST.Program.init(alloc),
     };
-    try p.nextToken();
-    try p.nextToken();
+    p.nextToken();
+    p.nextToken();
     return p;
 }
 
@@ -57,7 +57,7 @@ pub fn init(alloc: std.mem.Allocator, lexer: *Lexer) !*Parser {
 //    self.alloc.destroy(self);
 //}
 
-fn nextToken(self: *Parser) !void {
+fn nextToken(self: *Parser) void {
     self.current_token = self.peek_token;
     if (self.peek_token.Type != TokenType.EOF) {
         self.peek_token = self.lexer.tokens.items[self.current];
@@ -67,7 +67,7 @@ fn nextToken(self: *Parser) !void {
 
 fn expectPeek(self: *Parser, tokenType: TokenType) !void {
     if (self.peek_token.Type == tokenType) {
-        try self.nextToken();
+        self.nextToken();
     } else {
         try self.peekError(tokenType);
     }
@@ -78,11 +78,12 @@ fn parseLetStatement(self: *Parser) !*AST.Statement {
     try self.expectPeek(TokenType.IDENT);
     const identToken = self.current_token;
     try self.expectPeek(TokenType.ASSIGN);
+    self.nextToken();
     const letIdent: AST.Identifier = .{ .token = identToken, .value = identToken.Literal };
     const letStmt: AST.LetStatement = .{ .token = letToken, .name = letIdent, .value = try self.parseExpression(AST.Precedence.LOWEST) };
     const stmt: AST.Statement = .{ .Let = letStmt };
     while (self.current_token.Type != TokenType.SEMICOLON) {
-        try self.nextToken();
+        self.nextToken();
     }
     const stmtPointer = try self.alloc.create(AST.Statement);
     stmtPointer.* = stmt;
@@ -92,8 +93,8 @@ fn parseLetStatement(self: *Parser) !*AST.Statement {
 fn parseReturnStatement(self: *Parser) !*AST.Statement {
     const returnStmt: AST.ReturnStatement = .{ .token = self.current_token, .returnValue = try self.parseExpression(AST.Precedence.LOWEST) };
     const stmt: AST.Statement = .{ .Return = returnStmt };
-    try self.nextToken();
-    while (self.current_token.Type != TokenType.SEMICOLON) : (try self.nextToken()) {}
+    self.nextToken();
+    while (self.current_token.Type != TokenType.SEMICOLON) : (self.nextToken()) {}
     const stmtPointer = try self.alloc.create(AST.Statement);
     stmtPointer.* = stmt;
     return stmtPointer;
@@ -110,7 +111,7 @@ fn parseIntegerExpression(self: *Parser) !*AST.Expression {
 
 fn parsePrefix(self: *Parser) !*AST.Expression {
     const prefixToken = self.current_token;
-    try self.nextToken();
+    self.nextToken();
     const prefix: AST.PrefixExpression = .{ .token = prefixToken, .operator = prefixToken.Literal, .right = try self.parseExpression(AST.Precedence.PREFIX) };
     const expr: AST.Expression = .{ .Prefix = prefix };
     const exprPointer = try self.alloc.create(AST.Expression);
@@ -121,7 +122,7 @@ fn parsePrefix(self: *Parser) !*AST.Expression {
 fn parseInfix(self: *Parser, left: *AST.Expression) !*AST.Expression {
     const infixToken = self.current_token;
     const prec = AST.getTokenPrecedence(&self.current_token);
-    try self.nextToken();
+    self.nextToken();
     const right = try self.parseExpression(prec);
     const infix: AST.InfixExpression = .{ .token = infixToken, .operator = infixToken.Literal, .left = left, .right = right };
     const expr: AST.Expression = .{ .Infix = infix };
@@ -149,7 +150,7 @@ fn parseExpression(self: *Parser, precedence: AST.Precedence) anyerror!*AST.Expr
     while (self.peek_token.Type != TokenType.SEMICOLON and @intFromEnum(precedence) < @intFromEnum(AST.getTokenPrecedence(&self.peek_token))) {
         switch (self.peek_token.Type) {
             TokenType.PLUS, TokenType.ASTERISK, TokenType.SLASH, TokenType.GT, TokenType.LT, TokenType.EQ, TokenType.NOT_EQ, TokenType.MINUS, TokenType.ASSIGN => {
-                try self.nextToken();
+                self.nextToken();
                 left = try self.parseInfix(left);
                 break;
             },
@@ -162,7 +163,7 @@ fn parseExpression(self: *Parser, precedence: AST.Precedence) anyerror!*AST.Expr
 fn parseExpressionStatement(self: *Parser) !*AST.Statement {
     const exprStmt: AST.ExpressionStatement = .{ .token = self.current_token, .expression = try self.parseExpression(AST.Precedence.LOWEST) };
     const stmt: AST.Statement = .{ .Expr = exprStmt };
-    while (self.current_token.Type != TokenType.SEMICOLON) : (try self.nextToken()) {}
+    while (self.current_token.Type != TokenType.SEMICOLON) : (self.nextToken()) {}
     const stmtPointer = try self.alloc.create(AST.Statement);
     stmtPointer.* = stmt;
     return stmtPointer;
@@ -179,7 +180,7 @@ fn parseStatement(self: *Parser) !*AST.Statement {
 pub fn parseProgram(self: *Parser) !*AST.Program {
     while (self.current_token.Type != TokenType.EOF) {
         const stmtPtr = try self.parseStatement();
-        try self.nextToken();
+        self.nextToken();
         try self.program.statements.append(stmtPtr.*);
     }
     return self.program;

@@ -14,37 +14,48 @@ program: *Program,
 globals: std.AutoHashMap(usize, []const u8),
 strings: std.AutoHashMap(usize, []const u8),
 
-pub fn init(alloc: std.mem.Allocator, chunk: *Chunk) *ByteCode {
+pub fn init(alloc: std.mem.Allocator, program: *Program) !*ByteCode {
     const bc = try alloc.create(ByteCode);
     bc.* = .{
         .alloc = alloc,
-        .chunk = chunk,
+        .chunk = try Chunk.init(alloc),
         .globals = std.AutoHashMap(usize, []const u8).init(alloc),
         .strings = std.AutoHashMap(usize, []const u8).init(alloc),
+        .program = program,
     };
     return bc;
 }
 
-fn generateIntegerExpression(_: *ByteCode, _: AST.Expression) void {}
+fn generateIntegerExpression(self: *ByteCode, expr: AST.IntegerExpression) !void {
+    try self.emitConstant(Value.intValue(expr.value), expr.token.Line);
+}
 
-fn generateExpression(self: *ByteCode, expr: AST.Expression) void {
+fn generateExpression(self: *ByteCode, expr: AST.Expression) !void {
     switch (expr) {
-        .Integer => |e| self.generateIntegerExpression(e),
+        .Integer => |e| try self.generateIntegerExpression(e),
         else => std.debug.print("Not done yet\n", .{}),
     }
 }
 
-fn generateStatement(self: *ByteCode, stmt: AST.Statement) void {
+fn generateLetStatement(self: *ByteCode, stmt: AST.LetStatement) !void {
+    try self.generateExpression(stmt.value.*);
+    const constVal = try self.createConstant(Value.stringValue(stmt.name.value));
+    try self.emitBytes(OpCode.OP_SET_GLOBAL.asByte(), constVal, stmt.token.Line);
+}
+
+fn generateStatement(self: *ByteCode, stmt: AST.Statement) !void {
     switch (stmt) {
-        .Expr => |s| self.generateExpression(s.expression),
+        .Expr => |s| try self.generateExpression(s.expression.*),
+        .Let => |s| try self.generateLetStatement(s),
         else => std.debug.print("Not done yet\n", .{}),
     }
 }
 
-pub fn generate(self: *ByteCode, program: *AST.Program) void {
-    for (program.statements.items) |stmt| {
-        self.generateStatement(stmt);
+pub fn generate(self: *ByteCode) !void {
+    for (self.program.statements.items) |stmt| {
+        try self.generateStatement(stmt);
     }
+    try self.emitByte(OpCode.OP_RETURN.asByte(), 0);
 }
 
 fn emitByte(self: *ByteCode, byte: u8, line: usize) !void {
@@ -55,10 +66,14 @@ fn emitBytes(self: *ByteCode, byte1: u8, byte2: u8, line: usize) !void {
     try self.chunk.writeChunk(byte1, line);
     try self.chunk.writeChunk(byte2, line);
 }
-fn createConstant(self: *ByteCode, value: Value) !usize {
-    return try self.chunk.addConstant(value);
+fn createConstant(self: *ByteCode, value: Value) !u8 {
+    const constant = try self.chunk.addConstant(value);
+    if (constant > @as(usize, std.math.maxInt(u8))) {
+        @panic("Too many constants in a single chunk.\n");
+    }
+    return @intCast(constant);
 }
 
 fn emitConstant(self: *ByteCode, value: Value, line: usize) !void {
-    try self.emitBytes(OpCode.OP_CONSTANT, try self.createConstant(value), line);
+    try self.emitBytes(OpCode.OP_CONSTANT.asByte(), try self.createConstant(value), line);
 }
