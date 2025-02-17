@@ -2,12 +2,29 @@ const Value = @This();
 
 const std = @import("std");
 
-const ValueType = enum {
+pub const ValueType = enum {
     VAL_BOOL,
     VAL_INT,
     VAL_FLOATING,
     VAL_STRING,
     VAL_NIL,
+    VAL_RETURN,
+    ERROR,
+    pub fn toString(self: ValueType) []const u8 {
+        switch (self) {
+            .VAL_BOOL => return "BOOLEAN",
+            .VAL_INT => return "INTEGER",
+            .VAL_FLOATING => return "FLOAT",
+            .VAL_STRING => return "STRING",
+            .VAL_NIL => return "NULL",
+            .VAL_RETURN => return "RETURN",
+            .ERROR => return "ERROR",
+        }
+    }
+};
+
+pub const Error = struct {
+    message: []const u8,
 };
 
 pub const As = union(enum) {
@@ -15,6 +32,8 @@ pub const As = union(enum) {
     integer: i64,
     string: []const u8,
     nil: ?void,
+    ret: *Value,
+    err: Error,
 };
 
 valType: ValueType,
@@ -66,6 +85,29 @@ pub inline fn asNil(value: Value) ?void {
 
 pub inline fn nilValue() Value {
     return Value{ .valType = ValueType.VAL_NIL, .as = .{ .nil = null } };
+}
+pub inline fn isReturn(value: Value) bool {
+    return value.valType == ValueType.VAL_RETURN;
+}
+
+pub inline fn asReturn(value: Value) Value {
+    return value.as.ret.*;
+}
+
+pub inline fn returnValue(retValue: Value) Value {
+    return Value{ .valType = ValueType.VAL_RETURN, .as = .{ .ret = @constCast(&retValue) } };
+}
+
+pub inline fn isError(value: Value) bool {
+    return value.valType == ValueType.ERROR;
+}
+
+pub inline fn asError(value: Value) Error {
+    return value.as.err;
+}
+
+pub inline fn errorValue(value: Error) Value {
+    return Value{ .valType = ValueType.ERROR, .as = .{ .err = value } };
 }
 
 pub inline fn valuesEqual(a: Value, b: Value) bool {

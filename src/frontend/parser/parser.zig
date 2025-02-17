@@ -250,7 +250,7 @@ fn parseIfExpression(self: *Parser) !*AST.Expression {
     expr.* = .{
         .If = .{
             .token = self.current_token,
-            .alternative = null,
+            .alternative = undefined,
             .consequence = undefined,
             .condition = undefined,
         },
@@ -265,6 +265,8 @@ fn parseIfExpression(self: *Parser) !*AST.Expression {
         self.nextToken();
         try self.expectPeek(TokenType.LBRACE);
         expr.*.If.alternative.? = try self.parseBlockStatement();
+    } else {
+        expr.*.If.alternative = null;
     }
     return expr;
 }
@@ -463,13 +465,13 @@ test "test prefix expressions" {
     defer testArena.deinit();
     const PrefixTest = struct {
         input: []const u8,
-        operator: []const u8,
+        operator: AST.PrefixOperator,
         integerVal: i64,
     };
 
     const tests = [2]PrefixTest{
-        .{ .input = "!5;", .operator = "!", .integerVal = 5 },
-        .{ .input = "-15;", .operator = "-", .integerVal = 15 },
+        .{ .input = "!5;", .operator = AST.PrefixOperator.BANG, .integerVal = 5 },
+        .{ .input = "-15;", .operator = AST.PrefixOperator.MINUS, .integerVal = 15 },
     };
 
     for (tests) |tt| {
@@ -484,7 +486,7 @@ test "test prefix expressions" {
         try testing.expectEqual(1, program.statements.items.len);
         const stmt: AST.ExpressionStatement = program.statements.items[0].Expr;
         const pref = stmt.expression.Prefix;
-        try testing.expectEqualStrings(pref.operator, tt.operator);
+        std.debug.assert(pref.operator == tt.operator);
     }
 }
 
@@ -495,19 +497,19 @@ test "test infix expressions" {
     const InfixTest = struct {
         input: []const u8,
         leftVal: i64,
-        operator: []const u8,
+        operator: AST.InfixOperator,
         rightVal: i64,
     };
 
     const tests = [8]InfixTest{
-        .{ .input = "10 + 10;", .operator = "+", .rightVal = 10, .leftVal = 10 },
-        .{ .input = "12 - 3;", .operator = "-", .rightVal = 3, .leftVal = 12 },
-        .{ .input = "18 * 9;", .operator = "*", .rightVal = 9, .leftVal = 18 },
-        .{ .input = "12 / 6;", .operator = "/", .rightVal = 6, .leftVal = 12 },
-        .{ .input = "12 == 12;", .operator = "==", .rightVal = 12, .leftVal = 12 },
-        .{ .input = "12 != 12;", .operator = "!=", .rightVal = 12, .leftVal = 12 },
-        .{ .input = "12 > 12;", .operator = ">", .rightVal = 12, .leftVal = 12 },
-        .{ .input = "12 < 12;", .operator = "<", .rightVal = 12, .leftVal = 12 },
+        .{ .input = "10 + 10;", .operator = AST.InfixOperator.PLUS, .rightVal = 10, .leftVal = 10 },
+        .{ .input = "12 - 3;", .operator = AST.InfixOperator.MINUS, .rightVal = 3, .leftVal = 12 },
+        .{ .input = "18 * 9;", .operator = AST.InfixOperator.MULTIPLY, .rightVal = 9, .leftVal = 18 },
+        .{ .input = "12 / 6;", .operator = AST.InfixOperator.DIVIDE, .rightVal = 6, .leftVal = 12 },
+        .{ .input = "12 == 12;", .operator = AST.InfixOperator.EQUAL, .rightVal = 12, .leftVal = 12 },
+        .{ .input = "12 != 12;", .operator = AST.InfixOperator.NOT_EQUAL, .rightVal = 12, .leftVal = 12 },
+        .{ .input = "12 > 12;", .operator = AST.InfixOperator.GREATER_THAN, .rightVal = 12, .leftVal = 12 },
+        .{ .input = "12 < 12;", .operator = AST.InfixOperator.LESS_THAN, .rightVal = 12, .leftVal = 12 },
     };
 
     for (tests) |tt| {
@@ -522,7 +524,7 @@ test "test infix expressions" {
         try testing.expectEqual(1, program.statements.items.len);
         const stmt: AST.ExpressionStatement = program.statements.items[0].Expr;
         const infix = stmt.expression.Infix;
-        try testing.expectEqualStrings(infix.operator, tt.operator);
+        std.debug.assert(infix.operator == tt.operator);
         try testing.expectEqual(infix.left.Integer.value, tt.leftVal);
         try testing.expectEqual(infix.right.Integer.value, tt.rightVal);
     }

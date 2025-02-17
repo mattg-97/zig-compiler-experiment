@@ -13,6 +13,12 @@ pub const PrefixOperator = enum {
         if (std.mem.eql(u8, str, "-")) return PrefixOperator.MINUS;
         unreachable;
     }
+    pub fn toString(self: PrefixOperator) []const u8 {
+        switch (self) {
+            .BANG => return "!",
+            .MINUS => return "-",
+        }
+    }
 };
 
 pub const InfixOperator = enum {
@@ -34,6 +40,19 @@ pub const InfixOperator = enum {
         if (std.mem.eql(u8, str, "==")) return InfixOperator.EQUAL;
         if (std.mem.eql(u8, str, "!=")) return InfixOperator.NOT_EQUAL;
         unreachable;
+    }
+
+    pub fn toString(self: InfixOperator) []const u8 {
+        switch (self) {
+            .PLUS => return "+",
+            .MINUS => return "-",
+            .MULTIPLY => return "*",
+            .DIVIDE => return "/",
+            .LESS_THAN => return "<",
+            .GREATER_THAN => return ">",
+            .EQUAL => return "==",
+            .NOT_EQUAL => return "!=",
+        }
     }
 };
 

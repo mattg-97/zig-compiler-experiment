@@ -34,8 +34,12 @@ pub const Evaluator = struct {
             else => return Value.boolValue(false),
         }
     }
-    fn evaluateMinusPrefixOperatorExpression(_: *Evaluator, right: Value) Value {
-        if (!right.isInt()) return Value.nilValue();
+    fn evaluateMinusPrefixOperatorExpression(self: *Evaluator, right: Value) Value {
+        if (!right.isInt()) {
+            const message = std.fmt.allocPrint(self.alloc, "unknown operator: -{s}\n", .{right.valType.toString()}) catch "Unable to allocate print error message";
+            const err: Value.Error = .{ .message = message };
+            return Value.errorValue(err);
+        }
         return Value.intValue(-right.asInt());
     }
 
@@ -61,6 +65,11 @@ pub const Evaluator = struct {
     }
 
     fn evaluateInfixExpression(self: *Evaluator, operator: AST.InfixOperator, left: Value, right: Value) Value {
+        if (left.valType != right.valType) {
+            const message = std.fmt.allocPrint(self.alloc, "type mismatch: {s} {s} {s}", .{ left.valType.toString(), operator.toString(), right.valType.toString() }) catch "Unable to allocate error string";
+            const err: Value.Error = .{ .message = message };
+            return Value.errorValue(err);
+        }
         switch (operator) {
             .EQUAL => return Value.boolValue(Value.valuesEqual(left, right)),
             .NOT_EQUAL => return Value.boolValue(!Value.valuesEqual(left, right)),
@@ -70,6 +79,7 @@ pub const Evaluator = struct {
 
     fn evaluateIfExpression(self: *Evaluator, expr: AST.IfExpression) Value {
         const condition = self.evaluateExpression(expr.condition.*);
+        if (condition.isError()) return condition;
         if (isTruthy(condition)) {
             return self.evaluateStatement(expr.consequence.*);
         } else if (expr.alternative != null) {
@@ -94,16 +104,30 @@ pub const Evaluator = struct {
             .Bool => |expr| return self.evaluateBooleanExpression(expr),
             .Prefix => |expr| {
                 const right = self.evaluateExpression(expr.right.*);
+                if (right.isError()) return right;
                 return self.evaluatePrefixExpression(expr.operator, right);
             },
             .Infix => |expr| {
                 const left = self.evaluateExpression(expr.left.*);
+                if (left.isError()) return left;
                 const right = self.evaluateExpression(expr.right.*);
+                if (right.isError()) return right;
                 return self.evaluateInfixExpression(expr.operator, left, right);
             },
             .If => |stmt| return self.evaluateIfExpression(stmt),
             else => unreachable,
         }
+    }
+
+    fn evaluateBlockStatement(self: *Evaluator, block: AST.BlockStatement) Value {
+        var result: Value = undefined;
+        for (block.statements.items) |stmt| {
+            result = self.evaluateStatement(stmt.*);
+            if (!result.isNil()) {
+                if (result.valType == Value.ValueType.VAL_RETURN or result.valType == Value.ValueType.ERROR) return result;
+            }
+        }
+        return result;
     }
 
     fn evaluateExpressionStatement(self: *Evaluator, statement: AST.ExpressionStatement) Value {
@@ -113,12 +137,11 @@ pub const Evaluator = struct {
     fn evaluateStatement(self: *Evaluator, statement: AST.Statement) Value {
         switch (statement) {
             .Expr => |expr| return self.evaluateExpressionStatement(expr),
-            .Block => |block| {
-                var result: Value = undefined;
-                for (block.statements.items) |stmt| {
-                    result = self.evaluateStatement(stmt.*);
-                }
-                return result;
+            .Block => |block| return self.evaluateBlockStatement(block),
+            .Return => |ret| {
+                const val = self.evaluateExpression(ret.returnValue.*);
+                if (val.isError()) return val;
+                return Value.returnValue(val);
             },
             else => unreachable,
         }
@@ -128,6 +151,7 @@ pub const Evaluator = struct {
         var val: Value = undefined;
         for (program.statements.items) |stmt| {
             val = self.evaluateStatement(stmt);
+            if (val.isReturn()) return val.asReturn();
         }
         std.debug.print("Value is: ", .{});
         Value.printValue(val);
@@ -241,9 +265,6 @@ test "test evaluation of infix expressions" {
 
     for (tests) |tt| {
         const val = try testEval(testingAlloc, tt.input);
-        std.debug.print("VAL: {any}\n", .{val});
-        Value.printValue(val);
-        std.debug.print("\n", .{});
         assert(val.asInt() == tt.expected);
     }
 }
@@ -265,9 +286,48 @@ test "test if else expression" {
 
     for (tests) |tt| {
         const val = try testEval(testingAlloc, tt.input);
-        std.debug.print("VAL: {any}\n", .{val});
-        Value.printValue(val);
-        std.debug.print("\n", .{});
-        if (val.isInt()) assert(val.asInt() == tt.expected);
+        if (!val.isNil() and val.isInt()) assert(val.asInt() == tt.expected);
+    }
+}
+
+test "test return statement" {
+    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
+    const testingAlloc = testArena.allocator();
+    defer testArena.deinit();
+    const TestType = struct {
+        input: []const u8,
+        expected: Value,
+    };
+
+    const tests = [_]TestType{
+        .{ .input = "return 10;", .expected = Value.intValue(10) },
+        .{ .input = "return 10; 9;", .expected = Value.intValue(10) },
+        .{ .input = "return 2 * 5; 6;", .expected = Value.intValue(10) },
+        .{ .input = "9; return 2 * 5; 6;", .expected = Value.intValue(10) },
+    };
+
+    for (tests) |tt| {
+        const val = try testEval(testingAlloc, tt.input);
+        assert(Value.valuesEqual(val, tt.expected));
+    }
+}
+
+test "test error handling" {
+    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
+    const testingAlloc = testArena.allocator();
+    defer testArena.deinit();
+    const TestType = struct {
+        input: []const u8,
+        expected: []const u8,
+    };
+
+    const tests = [_]TestType{
+        .{ .input = "5 + true;", .expected = "type mismatch: INTEGER + BOOLEAN" },
+    };
+
+    for (tests) |tt| {
+        const val = try testEval(testingAlloc, tt.input);
+        assert(val.isError());
+        assert(std.mem.eql(u8, val.asError().message, tt.expected));
     }
 }
