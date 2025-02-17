@@ -7,6 +7,7 @@ const Lexer = @import("../lexer.zig");
 const Token = @import("../tokens.zig").Token;
 const TokenType = @import("../tokens.zig").TokenType;
 const AST = @import("ast.zig");
+const BoxValue = @import("../../utils/memory.zig").BoxValue;
 
 lexer: *Lexer,
 current: usize,
@@ -48,6 +49,77 @@ pub fn init(alloc: std.mem.Allocator, lexer: *Lexer) !*Parser {
     return p;
 }
 
+fn parseCallExpression(self: *Parser) !*AST.Expression {
+    const expr = try self.alloc.create(AST.Expression);
+    expr.*.Call = .{
+        .args = try self.parseCallArguments(),
+        .token = self.current_token,
+        .function = undefined,
+    };
+    return expr;
+}
+
+fn parseCallArguments(self: *Parser) ![]*AST.Expression {
+    const args: std.ArrayList(*AST.Expression) = try std.ArrayList(*AST.Expression).init(self.alloc);
+    if (self.peek_token.Type == TokenType.RPAREN) {
+        self.nextToken();
+        return args.items;
+    }
+    self.nextToken();
+    try args.append(try self.parseExpression(AST.Precedence.LOWEST));
+
+    while (self.peek_token.Type == TokenType.COMMA) {
+        self.nextToken();
+        self.nextToken();
+        try args.append(try self.parseExpression(AST.Precedence.LOWEST));
+    }
+    try self.expectPeek(TokenType.RPAREN);
+    return args.items;
+}
+
+fn parseFunctionLiteral(self: *Parser) !*AST.Expression {
+    const lit = try self.alloc.create(AST.Expression);
+    lit.* = .{
+        .Function = .{
+            .token = self.current_token,
+            .body = undefined,
+            .parameters = try std.ArrayList(*AST.Identifier).init(self.alloc),
+        },
+    };
+    try self.expectPeek(TokenType.LPAREN);
+    lit.*.Function.parameters = try self.parseFunctionParameters();
+    try self.expectPeek(TokenType.LBRACE);
+    lit.*.Function.body = try self.parseBlockStatement();
+    return lit;
+}
+
+fn parseFunctionParameters(self: *Parser) ![]*AST.Identifier {
+    const idents: std.ArrayList(*AST.Identifier) = try std.ArrayList(*AST.Identifier).init(self.alloc);
+    if (self.peek_token.Type == TokenType.RPAREN) {
+        self.nextToken();
+        return idents.items;
+    }
+    self.nextToken();
+    const ident: AST.Identifier = try self.alloc.create(AST.Identifier);
+    ident.* = .{
+        .token = self.current_token,
+        .value = self.current_token.Literal,
+    };
+    try idents.append(ident);
+    while (self.peek_token.Type == TokenType.COMMA) {
+        self.nextToken();
+        self.nextToken();
+        const identInner: AST.Identifier = try self.alloc.create(AST.Identifier);
+        identInner.* = .{
+            .token = self.current_token,
+            .value = self.current_token.Literal,
+        };
+        try idents.append(ident);
+    }
+    try self.expectPeek(TokenType.RPAREN);
+    return idents.items;
+}
+
 // No longer needed after switching to arena allocator
 //pub fn destroy(self: *Parser) void {
 //    for (self.errors.items) |itm| {
@@ -73,21 +145,28 @@ fn expectPeek(self: *Parser, tokenType: TokenType) !void {
     }
 }
 
+fn peekPrecedence(self: *Parser) AST.Precedence {
+    return AST.getTokenPrecedence(&self.peek_token);
+}
+
+fn currentPrecedence(self: *Parser) AST.Precedence {
+    return AST.getTokenPrecedence(&self.current_token);
+}
+
 fn parseLetStatement(self: *Parser) !*AST.Statement {
-    const letToken = self.current_token;
+    var letStmt: AST.LetStatement = .{
+        .name = undefined,
+        .value = undefined,
+        .token = self.current_token,
+    };
     try self.expectPeek(TokenType.IDENT);
-    const identToken = self.current_token;
+    letStmt.name = .{ .token = self.current_token, .value = self.current_token.Literal };
     try self.expectPeek(TokenType.ASSIGN);
     self.nextToken();
-    const letIdent: AST.Identifier = .{ .token = identToken, .value = identToken.Literal };
-    const letStmt: AST.LetStatement = .{ .token = letToken, .name = letIdent, .value = try self.parseExpression(AST.Precedence.LOWEST) };
+    letStmt.value = try self.parseExpression(AST.Precedence.LOWEST);
+    if (self.peek_token.Type == TokenType.SEMICOLON) self.nextToken();
     const stmt: AST.Statement = .{ .Let = letStmt };
-    while (self.current_token.Type != TokenType.SEMICOLON) {
-        self.nextToken();
-    }
-    const stmtPointer = try self.alloc.create(AST.Statement);
-    stmtPointer.* = stmt;
-    return stmtPointer;
+    return BoxValue(AST.Statement, stmt, &self.alloc);
 }
 
 fn parsePrintStatement(self: *Parser) !*AST.Statement {
@@ -100,14 +179,23 @@ fn parsePrintStatement(self: *Parser) !*AST.Statement {
     return stmtPointer;
 }
 
-fn parseReturnStatement(self: *Parser) !*AST.Statement {
-    const returnStmt: AST.ReturnStatement = .{ .token = self.current_token, .returnValue = try self.parseExpression(AST.Precedence.LOWEST) };
-    const stmt: AST.Statement = .{ .Return = returnStmt };
+fn parseGroupedExpression(self: *Parser) !*AST.Expression {
     self.nextToken();
-    while (self.current_token.Type != TokenType.SEMICOLON) : (self.nextToken()) {}
-    const stmtPointer = try self.alloc.create(AST.Statement);
-    stmtPointer.* = stmt;
-    return stmtPointer;
+    const expr = try self.parseExpression(AST.Precedence.LOWEST);
+    try self.expectPeek(TokenType.RPAREN);
+    return expr;
+}
+
+fn parseReturnStatement(self: *Parser) !*AST.Statement {
+    var retStmt: AST.ReturnStatement = .{
+        .returnValue = undefined,
+        .token = self.current_token,
+    };
+    self.nextToken();
+    retStmt.returnValue = try self.parseExpression(AST.Precedence.LOWEST);
+    if (self.peek_token.Type == TokenType.SEMICOLON) self.nextToken();
+    const stmt: AST.Statement = .{ .Return = retStmt };
+    return BoxValue(AST.Statement, stmt, &self.alloc);
 }
 
 fn parseIntegerExpression(self: *Parser) !*AST.Expression {
@@ -136,28 +224,50 @@ fn parseBooleanExpression(self: *Parser) !*AST.Expression {
     return expr;
 }
 
-//fn parseBlockStatement(self: *Parser) !std.ArrayList(AST.Statement) {
-//    const block = std.ArrayList(AST.Statement).init(self.alloc);
-//    self.nextToken();
-//    if (self.current_token.Type == TokenType.LBRACE) self.nextToken();
-//
-//    while (!self.current_token.Type == TokenType.RBRACE and !self.current_token.Type == TokenType.EOF) {
-//        const stmt = try self.parseStatement();
-//        try block.append(stmt.*);
-//        if (self.peek_token.Type == TokenType.EOF) self.nextToken();
-//        self.nextToken();
-//    }
-//    return block;
-//}
-//
-//fn parseIfExpression(self: *Parser) !*AST.Expression {
-//    const expr = try self.alloc.create(AST.Expression);
-//    try self.expectPeek(TokenType.LPAREN);
-//    self.nextToken();
-//    expr.*.If = .{ .condition = try self.parseExpression(AST.Precedence.LOWEST) };
-//    try self.expectPeek(TokenType.RPAREN);
-//    expr.*.If = .{ .consequence = try self.parseBlockStatement() };
-//}
+fn parseBlockStatement(self: *Parser) !*AST.Statement {
+    const block = try self.alloc.create(AST.Statement);
+    block.* = .{
+        .Block = .{
+            .token = self.current_token,
+            .statements = std.ArrayList(*AST.Statement).init(self.alloc),
+        },
+    };
+
+    self.nextToken();
+    if (self.current_token.Type == TokenType.LBRACE) self.nextToken();
+
+    while (self.current_token.Type != TokenType.RBRACE and self.current_token.Type != TokenType.EOF) {
+        const stmt = try self.parseStatement();
+        try block.*.Block.statements.append(stmt);
+        if (self.peek_token.Type == TokenType.EOF) self.nextToken();
+        self.nextToken();
+    }
+    return block;
+}
+
+fn parseIfExpression(self: *Parser) !*AST.Expression {
+    const expr = try self.alloc.create(AST.Expression);
+    expr.* = .{
+        .If = .{
+            .token = self.current_token,
+            .alternative = null,
+            .consequence = undefined,
+            .condition = undefined,
+        },
+    };
+    try self.expectPeek(TokenType.LPAREN);
+    self.nextToken();
+    expr.*.If.condition = try self.parseExpression(AST.Precedence.LOWEST);
+    try self.expectPeek(TokenType.RPAREN);
+    try self.expectPeek(TokenType.LBRACE);
+    expr.*.If.consequence = try self.parseBlockStatement();
+    if (self.peek_token.Type == TokenType.ELSE) {
+        self.nextToken();
+        try self.expectPeek(TokenType.LBRACE);
+        expr.*.If.alternative.? = try self.parseBlockStatement();
+    }
+    return expr;
+}
 
 fn parseInfix(self: *Parser, left: *AST.Expression) !*AST.Expression {
     const infixToken = self.current_token;
@@ -186,9 +296,11 @@ fn parseExpression(self: *Parser, precedence: AST.Precedence) anyerror!*AST.Expr
         TokenType.IDENT => left = try self.parseIdent(),
         TokenType.MINUS, TokenType.BANG => left = try self.parsePrefix(),
         TokenType.TRUE, TokenType.FALSE => left = try self.parseBooleanExpression(),
+        TokenType.IF => left = try self.parseIfExpression(),
+        TokenType.LPAREN => left = try self.parseGroupedExpression(),
         else => std.debug.print("TOKEN: {s} type: {s}\n", .{ self.current_token.Literal, std.enums.tagName(TokenType, self.current_token.Type).? }),
     }
-    while (self.peek_token.Type != TokenType.SEMICOLON and @intFromEnum(precedence) < @intFromEnum(AST.getTokenPrecedence(&self.peek_token))) {
+    while ((self.peek_token.Type != TokenType.SEMICOLON or self.peek_token.Type != TokenType.EOF) and @intFromEnum(precedence) <= @intFromEnum(AST.getTokenPrecedence(&self.peek_token))) {
         switch (self.peek_token.Type) {
             TokenType.PLUS, TokenType.ASTERISK, TokenType.SLASH, TokenType.GT, TokenType.LT, TokenType.EQ, TokenType.NOT_EQ, TokenType.MINUS, TokenType.ASSIGN => {
                 self.nextToken();
@@ -210,11 +322,12 @@ fn parseExpressionStatement(self: *Parser) !*AST.Statement {
     return stmtPointer;
 }
 
-fn parseStatement(self: *Parser) !*AST.Statement {
+fn parseStatement(self: *Parser) anyerror!*AST.Statement {
     return switch (self.current_token.Type) {
         TokenType.LET => try self.parseLetStatement(),
         TokenType.RETURN => try self.parseReturnStatement(),
         TokenType.PRINT => try self.parsePrintStatement(),
+        TokenType.LBRACE => try self.parseBlockStatement(),
         else => try self.parseExpressionStatement(),
     };
 }
@@ -225,6 +338,7 @@ pub fn parseProgram(self: *Parser) !*AST.Program {
         self.nextToken();
         try self.program.statements.append(stmtPtr.*);
     }
+    self.program.print();
     return self.program;
 }
 

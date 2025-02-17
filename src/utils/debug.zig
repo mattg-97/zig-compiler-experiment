@@ -21,7 +21,7 @@ pub fn simpleInstruction(name: []const u8, offset: usize) usize {
 
 pub fn constantInstruction(name: []const u8, chunk: *Chunk, offset: usize) usize {
     const consant = chunk.codes.items[offset + 1];
-    print("{s} {d}", name, consant);
+    print("{s: <15} {d: <4}", .{ name, consant });
     Value.printValue(chunk.constants.items[consant]);
     print("\n", .{});
     return (offset + 2);
@@ -32,7 +32,7 @@ pub fn disassemleInstruction(chunk: *Chunk, offset: usize) usize {
     if (offset > 0 and chunk.lines.items[offset] == chunk.lines.items[offset - 1]) {
         print("    | ", .{});
     } else {
-        print("{d} ", .{chunk.lines.items[offset]});
+        print("{d: <4} ", .{chunk.lines.items[offset]});
     }
     const instruction = chunk.codes.items[offset];
     switch (instruction) {
@@ -41,7 +41,7 @@ pub fn disassemleInstruction(chunk: *Chunk, offset: usize) usize {
         OpCode.OP_SUBTRACT.asByte() => return simpleInstruction("OP_SUBTRACT", offset),
         OpCode.OP_CONSTANT.asByte() => return constantInstruction("OP_CONSTANT", chunk, offset),
         else => {
-            print("no idea\n");
+            print("no idea\n", .{});
             return (offset + 1);
         },
     }

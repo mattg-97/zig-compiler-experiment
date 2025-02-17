@@ -5,6 +5,17 @@ const std = @import("std");
 const Token = @import("../tokens.zig").Token;
 const TokenType = @import("../tokens.zig").TokenType;
 
+pub const NodeType = enum {
+    PROGRAM_NODE,
+    EXPRESSION_NODE,
+    EXPRESSION_STATEMENT_NODE,
+    RETURN_STATEMENT_NODE,
+    LET_STATEMENT_NODE,
+    INTEGER_LITERAL_NODE,
+    BOOLEAN_LITERAL_NODE,
+    BLOCK_STATEMENTS_NODE,
+};
+
 pub const Precedence = enum(u8) {
     LOWEST,
     LOGICAL_OR,
@@ -35,11 +46,53 @@ pub fn getTokenPrecedence(token: *Token) Precedence {
     }
 }
 
+pub const FunctionLiteral = struct {
+    token: Token,
+    parameters: []*Identifier,
+    body: *BlockStatement,
+    pub fn tokenLiteral(self: FunctionLiteral) []const u8 {
+        return self.token.Literal;
+    }
+
+    pub fn print(self: FunctionLiteral) void {
+        std.debug.print("{s}", .{self.tokenLiteral()});
+        std.debug.print("(", .{});
+        for (self.parameters, 0..) |arg, idx| {
+            std.debug.print("param {d} : ", .{idx});
+            arg.print();
+            std.debug.print("\n", .{});
+        }
+        std.debug.print(")\n", .{});
+        self.body.print();
+    }
+};
+
+pub const CallExpression = struct {
+    token: Token,
+    function: *Expression,
+    args: []*Expression,
+    pub fn tokenLiteral(self: CallExpression) []const u8 {
+        return self.token.Length;
+    }
+
+    pub fn print(self: CallExpression) void {
+        self.function.print();
+        std.debug.print("(", .{});
+        for (self.args, 0..) |arg, idx| {
+            std.debug.print("arg {d} : ", .{idx});
+            arg.print();
+            std.debug.print("\n", .{});
+        }
+        std.debug.print(")\n", .{});
+    }
+};
+
 pub const Statement = union(enum) {
     Let: LetStatement,
     Return: ReturnStatement,
     Expr: ExpressionStatement,
     Print: PrintStatement,
+    Block: BlockStatement,
     //Other statement variants
     pub fn tokenLiteral(self: Statement) []const u8 {
         return switch (self) {
@@ -47,7 +100,14 @@ pub const Statement = union(enum) {
             .Return => |stmt| stmt.tokenLiteral(),
             .Expr => |stmt| stmt.tokenLiteral(),
             .Print => |stmt| stmt.tokenLiteral(),
+            .Block => |stmt| stmt.tokenLiteral(),
         };
+    }
+
+    pub fn print(self: Statement) void {
+        switch (self) {
+            inline else => |stmt| stmt.print(),
+        }
     }
 };
 
@@ -55,9 +115,20 @@ pub const IfExpression = struct {
     token: Token,
     condition: *Expression,
     consequence: *Statement,
-    alternative: *Statement,
+    alternative: ?*Statement,
     pub fn tokenLiteral(self: IfExpression) []const u8 {
         return self.token.Literal;
+    }
+    pub fn print(self: IfExpression) void {
+        std.debug.print("if ", .{});
+        self.condition.print();
+        std.debug.print(" ", .{});
+        self.consequence.print();
+
+        if (self.alternative != null) {
+            std.debug.print("else ", .{});
+            self.alternative.?.print();
+        }
     }
 };
 
@@ -67,6 +138,9 @@ pub const IntegerExpression = struct {
     pub fn tokenLiteral(self: IntegerExpression) []const u8 {
         return self.token.Literal;
     }
+    pub fn print(self: IntegerExpression) void {
+        std.debug.print("{s}", .{self.token.Literal});
+    }
 };
 
 pub const BooleanExpression = struct {
@@ -74,6 +148,10 @@ pub const BooleanExpression = struct {
     token: Token,
     pub fn tokenLiteral(self: BooleanExpression) []const u8 {
         return self.token.Literal;
+    }
+
+    pub fn print(self: BooleanExpression) void {
+        std.debug.print("{s}", .{self.token.Literal});
     }
 };
 
@@ -84,6 +162,8 @@ pub const Expression = union(enum) {
     Infix: InfixExpression,
     If: IfExpression,
     Bool: BooleanExpression,
+    Function: FunctionLiteral,
+    Call: CallExpression,
     pub fn tokenLiteral(self: Expression) []const u8 {
         return switch (self) {
             IntegerExpression => |expr| expr.tokenLiteral(),
@@ -92,7 +172,15 @@ pub const Expression = union(enum) {
             InfixExpression => |expr| expr.tokenLiteral(),
             IfExpression => |expr| expr.tokenLiteral(),
             BooleanExpression => |expr| expr.tokenLiteral(),
+            FunctionLiteral => |expr| expr.tokenLiteral(),
+            CallExpression => |expr| expr.tokenLiteral(),
         };
+    }
+
+    pub fn print(self: Expression) void {
+        switch (self) {
+            inline else => |case| case.print(),
+        }
     }
 };
 
@@ -101,6 +189,24 @@ pub const PrintStatement = struct {
     value: *Expression,
     pub fn tokenLiteral(self: PrintStatement) []const u8 {
         return self.token.Literal;
+    }
+    pub fn print(self: PrintStatement) void {
+        std.debug.print("{s} : ", .{self.token.Literal});
+        self.value.print();
+    }
+};
+
+pub const BlockStatement = struct {
+    token: Token,
+    statements: std.ArrayList(*Statement),
+    pub fn tokenLiteral(self: BlockStatement) []const u8 {
+        return self.token.Literal;
+    }
+
+    pub fn print(self: BlockStatement) void {
+        for (self.statements.items) |stmt| {
+            stmt.print();
+        }
     }
 };
 
@@ -111,6 +217,14 @@ pub const LetStatement = struct {
     pub fn tokenLiteral(self: LetStatement) []const u8 {
         return self.token.Literal;
     }
+
+    pub fn print(self: LetStatement) void {
+        std.debug.print("{s} ", .{self.tokenLiteral()});
+        self.name.print();
+        std.debug.print(" = ", .{});
+        self.value.print();
+        std.debug.print(";\n", .{});
+    }
 };
 
 pub const PrefixExpression = struct {
@@ -119,6 +233,12 @@ pub const PrefixExpression = struct {
     right: *Expression,
     pub fn tokenLiteral(self: PrefixExpression) []const u8 {
         return self.token.Literal;
+    }
+    pub fn print(self: PrefixExpression) void {
+        std.debug.print("(", .{});
+        std.debug.print("{s}", .{self.operator});
+        self.right.print();
+        std.debug.print(")\n", .{});
     }
 };
 
@@ -130,6 +250,14 @@ pub const InfixExpression = struct {
     pub fn tokenLiteral(self: InfixExpression) []const u8 {
         return self.token.Literal;
     }
+
+    pub fn print(self: InfixExpression) void {
+        std.debug.print("(", .{});
+        self.left.print();
+        std.debug.print(" {s} ", .{self.operator});
+        self.right.print();
+        std.debug.print(")\n", .{});
+    }
 };
 
 pub const ExpressionStatement = struct {
@@ -137,6 +265,9 @@ pub const ExpressionStatement = struct {
     expression: *Expression,
     pub fn tokenLiteral(self: ExpressionStatement) []const u8 {
         return self.token.Literal;
+    }
+    pub fn print(self: ExpressionStatement) void {
+        self.expression.print();
     }
 };
 
@@ -146,12 +277,20 @@ pub const ReturnStatement = struct {
     pub fn tokenLiteral(self: ReturnStatement) []const u8 {
         return self.token.Literal;
     }
+    pub fn print(self: ReturnStatement) void {
+        std.debug.print("{s} ", .{self.tokenLiteral()});
+        self.returnValue.print();
+        std.debug.print("\n", .{});
+    }
 };
 pub const Identifier = struct {
     token: Token,
     value: []const u8,
     pub fn tokenLiteral(self: Identifier) []const u8 {
         return self.token.Literal;
+    }
+    pub fn print(self: Identifier) void {
+        std.debug.print("{s}\n", .{self.value});
     }
 };
 
@@ -164,6 +303,16 @@ pub const Program = struct {
             return self.statements.items[0].tokenLiteral();
         } else {
             return "";
+        }
+    }
+
+    pub fn print(self: Self) void {
+        if (self.statements.items.len > 0) {
+            for (self.statements.items) |stmt| {
+                stmt.print();
+            }
+        } else {
+            std.debug.print("No statemenets to print.\n", .{});
         }
     }
 

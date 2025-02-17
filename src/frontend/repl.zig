@@ -5,6 +5,7 @@ const ByteCode = @import("../backend/bytecode.zig");
 const VM = @import("../backend/vm.zig");
 const Parser = @import("parser/parser.zig");
 const tokens = @import("tokens.zig");
+const Evaluator = @import("../backend/evaluator/evaluator.zig").Evaluator;
 
 pub fn startRepl(arena: *std.heap.ArenaAllocator) !void {
     const alloc = arena.*.allocator();
@@ -24,10 +25,12 @@ fn processInput(arena: *std.heap.ArenaAllocator, alloc: std.mem.Allocator, input
     try lex.tokenize();
     const parser = try Parser.init(alloc, lex);
     const program = try parser.parseProgram();
-    const bc = try ByteCode.init(alloc, program);
-    try bc.generate();
-    const vm = try VM.init(alloc, bc);
-    _ = try vm.run();
+    const evaluator = try Evaluator.init(alloc);
+    _ = evaluator.evaluate(program);
+    // const bc = try ByteCode.init(alloc, program);
+    // try bc.generate();
+    // const vm = try VM.init(alloc, bc);
+    // _ = try vm.run();
     std.debug.assert(arena.*.reset(std.heap.ArenaAllocator.ResetMode.free_all));
 }
 

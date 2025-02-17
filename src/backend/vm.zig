@@ -7,6 +7,7 @@ const Chunk = @import("types/chunk.zig");
 const OpCode = Chunk.OpCode;
 const Value = @import("types/value.zig");
 const ByteCode = @import("bytecode.zig");
+const Debug = @import("../utils/debug.zig");
 
 alloc: std.mem.Allocator,
 hasher: std.hash.Fnv1a_32,
