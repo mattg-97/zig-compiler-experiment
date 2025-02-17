@@ -210,7 +210,7 @@ fn parseIntegerExpression(self: *Parser) !*AST.Expression {
 fn parsePrefix(self: *Parser) !*AST.Expression {
     const prefixToken = self.current_token;
     self.nextToken();
-    const prefix: AST.PrefixExpression = .{ .token = prefixToken, .operator = prefixToken.Literal, .right = try self.parseExpression(AST.Precedence.PREFIX) };
+    const prefix: AST.PrefixExpression = .{ .token = prefixToken, .operator = AST.PrefixOperator.fromString(prefixToken.Literal), .right = try self.parseExpression(AST.Precedence.PREFIX) };
     const expr: AST.Expression = .{ .Prefix = prefix };
     const exprPointer = try self.alloc.create(AST.Expression);
     exprPointer.* = expr;
@@ -274,7 +274,7 @@ fn parseInfix(self: *Parser, left: *AST.Expression) !*AST.Expression {
     const prec = AST.getTokenPrecedence(&self.current_token);
     self.nextToken();
     const right = try self.parseExpression(prec);
-    const infix: AST.InfixExpression = .{ .token = infixToken, .operator = infixToken.Literal, .left = left, .right = right };
+    const infix: AST.InfixExpression = .{ .token = infixToken, .operator = AST.InfixOperator.fromString(infixToken.Literal), .left = left, .right = right };
     const expr: AST.Expression = .{ .Infix = infix };
     const exprPointer = try self.alloc.create(AST.Expression);
     exprPointer.* = expr;

@@ -39,34 +39,33 @@ pub const Evaluator = struct {
         return Value.intValue(-right.asInt());
     }
 
-    fn evaluatePrefixExpression(self: *Evaluator, operator: []const u8, right: Value) Value {
-        if (std.mem.eql(u8, operator, "!")) {
-            return self.evaluateBangOperatorExpression(right);
-        } else if (std.mem.eql(u8, operator, "-")) {
-            return self.evaluateMinusPrefixOperatorExpression(right);
-        } else {
-            return Value.nilValue();
+    fn evaluatePrefixExpression(self: *Evaluator, operator: AST.PrefixOperator, right: Value) Value {
+        switch (operator) {
+            .BANG => return self.evaluateBangOperatorExpression(right),
+            .MINUS => return self.evaluateMinusPrefixOperatorExpression(right),
         }
     }
-    fn evaluateIntegerInfixExpression(_: *Evaluator, operator: []const u8, left: Value, right: Value) Value {
+    fn evaluateIntegerInfixExpression(_: *Evaluator, operator: AST.InfixOperator, left: Value, right: Value) Value {
         const leftVal = left.asInt();
         const rightVal = right.asInt();
-        if (std.mem.eql(u8, operator, "+")) return Value.intValue(leftVal + rightVal);
-        if (std.mem.eql(u8, operator, "-")) return Value.intValue(leftVal - rightVal);
-        if (std.mem.eql(u8, operator, "*")) return Value.intValue(leftVal * rightVal);
-        if (std.mem.eql(u8, operator, "/")) return Value.intValue(@divExact(leftVal, rightVal));
-        if (std.mem.eql(u8, operator, "<")) return Value.boolValue(leftVal < rightVal);
-        if (std.mem.eql(u8, operator, ">")) return Value.boolValue(leftVal > rightVal);
-        if (std.mem.eql(u8, operator, "==")) return Value.boolValue(leftVal == rightVal);
-        if (std.mem.eql(u8, operator, "!=")) return Value.boolValue(leftVal != rightVal);
-        return Value.nilValue();
+        switch (operator) {
+            .PLUS => return Value.intValue(leftVal + rightVal),
+            .MINUS => return Value.intValue(leftVal - rightVal),
+            .MULTIPLY => return Value.intValue(leftVal * rightVal),
+            .DIVIDE => return Value.intValue(@divExact(leftVal, rightVal)),
+            .LESS_THAN => return Value.boolValue(leftVal < rightVal),
+            .GREATER_THAN => return Value.boolValue(leftVal > rightVal),
+            .EQUAL => return Value.boolValue(leftVal == rightVal),
+            .NOT_EQUAL => return Value.boolValue(leftVal != rightVal),
+        }
     }
 
-    fn evaluateInfixExpression(self: *Evaluator, operator: []const u8, left: Value, right: Value) Value {
-        if (std.mem.eql(u8, operator, "==")) return Value.boolValue(Value.valuesEqual(left, right));
-        if (std.mem.eql(u8, operator, "!=")) return Value.boolValue(!Value.valuesEqual(left, right));
-        if (left.isInt() and right.isInt()) return self.evaluateIntegerInfixExpression(operator, left, right);
-        return Value.nilValue();
+    fn evaluateInfixExpression(self: *Evaluator, operator: AST.InfixOperator, left: Value, right: Value) Value {
+        switch (operator) {
+            .EQUAL => return Value.boolValue(Value.valuesEqual(left, right)),
+            .NOT_EQUAL => return Value.boolValue(!Value.valuesEqual(left, right)),
+            else => return self.evaluateIntegerInfixExpression(operator, left, right),
+        }
     }
 
     fn evaluateIfExpression(self: *Evaluator, expr: AST.IfExpression) Value {

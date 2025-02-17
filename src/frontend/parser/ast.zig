@@ -5,6 +5,38 @@ const std = @import("std");
 const Token = @import("../tokens.zig").Token;
 const TokenType = @import("../tokens.zig").TokenType;
 
+pub const PrefixOperator = enum {
+    BANG,
+    MINUS,
+    pub fn fromString(str: []const u8) PrefixOperator {
+        if (std.mem.eql(u8, str, "!")) return PrefixOperator.BANG;
+        if (std.mem.eql(u8, str, "-")) return PrefixOperator.MINUS;
+        unreachable;
+    }
+};
+
+pub const InfixOperator = enum {
+    PLUS,
+    MINUS,
+    MULTIPLY,
+    DIVIDE,
+    LESS_THAN,
+    GREATER_THAN,
+    EQUAL,
+    NOT_EQUAL,
+    pub fn fromString(str: []const u8) InfixOperator {
+        if (std.mem.eql(u8, str, "+")) return InfixOperator.PLUS;
+        if (std.mem.eql(u8, str, "-")) return InfixOperator.MINUS;
+        if (std.mem.eql(u8, str, "*")) return InfixOperator.MULTIPLY;
+        if (std.mem.eql(u8, str, "/")) return InfixOperator.DIVIDE;
+        if (std.mem.eql(u8, str, "<")) return InfixOperator.LESS_THAN;
+        if (std.mem.eql(u8, str, ">")) return InfixOperator.GREATER_THAN;
+        if (std.mem.eql(u8, str, "==")) return InfixOperator.EQUAL;
+        if (std.mem.eql(u8, str, "!=")) return InfixOperator.NOT_EQUAL;
+        unreachable;
+    }
+};
+
 pub const NodeType = enum {
     PROGRAM_NODE,
     EXPRESSION_NODE,
@@ -229,14 +261,14 @@ pub const LetStatement = struct {
 
 pub const PrefixExpression = struct {
     token: Token,
-    operator: []const u8,
+    operator: PrefixOperator,
     right: *Expression,
     pub fn tokenLiteral(self: PrefixExpression) []const u8 {
         return self.token.Literal;
     }
     pub fn print(self: PrefixExpression) void {
         std.debug.print("(", .{});
-        std.debug.print("{s}", .{self.operator});
+        std.debug.print("{any}", .{self.operator});
         self.right.print();
         std.debug.print(")\n", .{});
     }
@@ -245,7 +277,7 @@ pub const PrefixExpression = struct {
 pub const InfixExpression = struct {
     token: Token,
     left: *Expression,
-    operator: []const u8,
+    operator: InfixOperator,
     right: *Expression,
     pub fn tokenLiteral(self: InfixExpression) []const u8 {
         return self.token.Literal;
@@ -254,7 +286,7 @@ pub const InfixExpression = struct {
     pub fn print(self: InfixExpression) void {
         std.debug.print("(", .{});
         self.left.print();
-        std.debug.print(" {s} ", .{self.operator});
+        std.debug.print(" {any} ", .{self.operator});
         self.right.print();
         std.debug.print(")\n", .{});
     }
