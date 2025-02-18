@@ -3,6 +3,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const ByteCode = @import("../backend/bytecode.zig");
 const VM = @import("../backend/vm.zig");
+const Environment = @import("../backend/environment/environment.zig");
 const Parser = @import("parser/parser.zig");
 const tokens = @import("tokens.zig");
 const Evaluator = @import("../backend/evaluator/evaluator.zig").Evaluator;
@@ -25,7 +26,8 @@ fn processInput(arena: *std.heap.ArenaAllocator, alloc: std.mem.Allocator, input
     try lex.tokenize();
     const parser = try Parser.init(alloc, lex);
     const program = try parser.parseProgram();
-    const evaluator = try Evaluator.init(alloc);
+    const environment = try Environment.init(alloc);
+    const evaluator = try Evaluator.init(alloc, environment);
     _ = evaluator.evaluate(program);
     // const bc = try ByteCode.init(alloc, program);
     // try bc.generate();

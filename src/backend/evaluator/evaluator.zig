@@ -7,13 +7,16 @@ const Value = @import("../types/value.zig");
 const Lexer = @import("../../frontend/lexer.zig");
 const Parser = @import("../../frontend/parser/parser.zig");
 const AST = @import("../../frontend/parser/ast.zig");
+const Environment = @import("../environment/environment.zig");
 
 pub const Evaluator = struct {
     alloc: std.mem.Allocator,
-    pub fn init(alloc: std.mem.Allocator) !*Evaluator {
+    env: *Environment,
+    pub fn init(alloc: std.mem.Allocator, env: *Environment) !*Evaluator {
         const evaluator = try alloc.create(Evaluator);
         evaluator.* = .{
             .alloc = alloc,
+            .env = env,
         };
         return evaluator;
     }
@@ -98,6 +101,12 @@ pub const Evaluator = struct {
         return true;
     }
 
+    fn evaluateIdentifier(self: *Evaluator, ident: AST.Identifier) Value {
+        const val = self.env.get(ident.value);
+        if (val == null) return Value.errorValue(Value.Error{ .message = "Value doesnt exist in hash map store" });
+        return val.?;
+    }
+
     fn evaluateExpression(self: *Evaluator, expression: AST.Expression) Value {
         switch (expression) {
             .Integer => |int| return self.evaluateIntegerExpression(int),
@@ -115,6 +124,7 @@ pub const Evaluator = struct {
                 return self.evaluateInfixExpression(expr.operator, left, right);
             },
             .If => |stmt| return self.evaluateIfExpression(stmt),
+            .Ident => |ident| return self.evaluateIdentifier(ident),
             else => unreachable,
         }
     }
@@ -143,6 +153,15 @@ pub const Evaluator = struct {
                 if (val.isError()) return val;
                 return Value.returnValue(val);
             },
+            .Let => |stmt| {
+                const val = self.evaluateExpression(stmt.value.*);
+                if (val.isError()) return val;
+                if (self.env.set(stmt.name.value, val)) |value| {
+                    return value;
+                } else |_| {
+                    @panic("Unable to add key to hash store");
+                }
+            },
             else => unreachable,
         }
     }
@@ -167,7 +186,9 @@ fn testEval(alloc: std.mem.Allocator, input: []const u8) !Value {
     const parser = try Parser.init(alloc, lexer);
     const program = try parser.parseProgram();
 
-    const evaluator = try Evaluator.init(alloc);
+    const environment = try Environment.init(alloc);
+
+    const evaluator = try Evaluator.init(alloc, environment);
     return evaluator.evaluate(program);
 }
 
@@ -329,5 +350,25 @@ test "test error handling" {
         const val = try testEval(testingAlloc, tt.input);
         assert(val.isError());
         assert(std.mem.eql(u8, val.asError().message, tt.expected));
+    }
+}
+
+test "test let statements" {
+    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
+    const testingAlloc = testArena.allocator();
+    defer testArena.deinit();
+    const TestType = struct {
+        input: []const u8,
+        expected: i64,
+    };
+
+    const tests = [_]TestType{
+        .{ .input = "let a = 5; a;", .expected = 5 },
+    };
+
+    for (tests) |tt| {
+        const val = try testEval(testingAlloc, tt.input);
+        try testing.expect(val.isInt());
+        try testing.expectEqual(val.asInt(), tt.expected);
     }
 }
