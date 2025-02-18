@@ -11,24 +11,22 @@ const Environment = @import("../environment/environment.zig");
 
 pub const Evaluator = struct {
     alloc: std.mem.Allocator,
-    env: *Environment,
-    pub fn init(alloc: std.mem.Allocator, env: *Environment) !*Evaluator {
+    pub fn init(alloc: std.mem.Allocator) !*Evaluator {
         const evaluator = try alloc.create(Evaluator);
         evaluator.* = .{
             .alloc = alloc,
-            .env = env,
         };
         return evaluator;
     }
-    fn evaluateIntegerExpression(_: *Evaluator, expr: AST.IntegerExpression) Value {
+    fn evaluateIntegerExpression(_: *Evaluator, expr: AST.IntegerExpression, _: *Environment) Value {
         return Value.intValue(expr.value);
     }
 
-    fn evaluateBooleanExpression(_: *Evaluator, expr: AST.BooleanExpression) Value {
+    fn evaluateBooleanExpression(_: *Evaluator, expr: AST.BooleanExpression, _: *Environment) Value {
         return Value.boolValue(expr.value);
     }
 
-    fn evaluateBangOperatorExpression(_: *Evaluator, right: Value) Value {
+    fn evaluateBangOperatorExpression(_: *Evaluator, right: Value, _: *Environment) Value {
         switch (right.as) {
             .boolean => |bl| {
                 return Value.boolValue(!bl);
@@ -37,7 +35,7 @@ pub const Evaluator = struct {
             else => return Value.boolValue(false),
         }
     }
-    fn evaluateMinusPrefixOperatorExpression(self: *Evaluator, right: Value) Value {
+    fn evaluateMinusPrefixOperatorExpression(self: *Evaluator, right: Value, _: *Environment) Value {
         if (!right.isInt()) {
             const message = std.fmt.allocPrint(self.alloc, "unknown operator: -{s}\n", .{right.valType.toString()}) catch "Unable to allocate print error message";
             const err: Value.Error = .{ .message = message };
@@ -46,13 +44,13 @@ pub const Evaluator = struct {
         return Value.intValue(-right.asInt());
     }
 
-    fn evaluatePrefixExpression(self: *Evaluator, operator: AST.PrefixOperator, right: Value) Value {
+    fn evaluatePrefixExpression(self: *Evaluator, operator: AST.PrefixOperator, right: Value, env: *Environment) Value {
         switch (operator) {
-            .BANG => return self.evaluateBangOperatorExpression(right),
-            .MINUS => return self.evaluateMinusPrefixOperatorExpression(right),
+            .BANG => return self.evaluateBangOperatorExpression(right, env),
+            .MINUS => return self.evaluateMinusPrefixOperatorExpression(right, env),
         }
     }
-    fn evaluateIntegerInfixExpression(_: *Evaluator, operator: AST.InfixOperator, left: Value, right: Value) Value {
+    fn evaluateIntegerInfixExpression(_: *Evaluator, operator: AST.InfixOperator, left: Value, right: Value, _: *Environment) Value {
         const leftVal = left.asInt();
         const rightVal = right.asInt();
         switch (operator) {
@@ -67,7 +65,7 @@ pub const Evaluator = struct {
         }
     }
 
-    fn evaluateInfixExpression(self: *Evaluator, operator: AST.InfixOperator, left: Value, right: Value) Value {
+    fn evaluateInfixExpression(self: *Evaluator, operator: AST.InfixOperator, left: Value, right: Value, env: *Environment) !Value {
         if (left.valType != right.valType) {
             const message = std.fmt.allocPrint(self.alloc, "type mismatch: {s} {s} {s}", .{ left.valType.toString(), operator.toString(), right.valType.toString() }) catch "Unable to allocate error string";
             const err: Value.Error = .{ .message = message };
@@ -76,17 +74,17 @@ pub const Evaluator = struct {
         switch (operator) {
             .EQUAL => return Value.boolValue(Value.valuesEqual(left, right)),
             .NOT_EQUAL => return Value.boolValue(!Value.valuesEqual(left, right)),
-            else => return self.evaluateIntegerInfixExpression(operator, left, right),
+            else => return self.evaluateIntegerInfixExpression(operator, left, right, env),
         }
     }
 
-    fn evaluateIfExpression(self: *Evaluator, expr: AST.IfExpression) Value {
-        const condition = self.evaluateExpression(expr.condition.*);
+    fn evaluateIfExpression(self: *Evaluator, expr: AST.IfExpression, env: *Environment) !Value {
+        const condition = try self.evaluateExpression(expr.condition.*, env);
         if (condition.isError()) return condition;
         if (isTruthy(condition)) {
-            return self.evaluateStatement(expr.consequence.*);
+            return self.evaluateStatement(expr.consequence.*, env);
         } else if (expr.alternative != null) {
-            return self.evaluateStatement(expr.alternative.?.*);
+            return self.evaluateStatement(expr.alternative.?.*, env);
         } else {
             return Value.nilValue();
         }
@@ -101,38 +99,93 @@ pub const Evaluator = struct {
         return true;
     }
 
-    fn evaluateIdentifier(self: *Evaluator, ident: AST.Identifier) Value {
-        const val = self.env.get(ident.value);
+    fn applyFunction(self: *Evaluator, func: Value, args: []Value) !Value {
+        if (!func.isFunc()) return Value.errorValue(Value.Error{ .message = "Unexpected value, should be func." });
+        if (func.asFunc().params.len != args.len) return Value.errorValue(Value.Error{ .message = "Arguments should be same size as params\n" });
+        const extendedEnv = try self.extendFunctionEnv(func.asFunc(), args);
+        const evaluated = try self.evaluateBlockStatement(func.asFunc().body, extendedEnv);
+        return unwrapReturnValue(evaluated);
+    }
+
+    fn extendFunctionEnv(_: *Evaluator, func: Value.Function, args: []Value) !*Environment {
+        var env = try Environment.newEnclosed(func.env);
+        var idx: usize = 0;
+        for (func.params) |param| {
+            _ = try env.set(param.*.value, args[idx]);
+            idx += 1;
+        }
+        return env;
+    }
+
+    fn unwrapReturnValue(value: Value) Value {
+        if (value.isReturn()) return value.returnValue();
+        return value;
+    }
+
+    fn evaluateIdentifier(_: *Evaluator, ident: AST.Identifier, env: *Environment) !Value {
+        const val = env.get(ident.value);
         if (val == null) return Value.errorValue(Value.Error{ .message = "Value doesnt exist in hash map store" });
+        val.?.printValue();
         return val.?;
     }
 
-    fn evaluateExpression(self: *Evaluator, expression: AST.Expression) Value {
+    fn evaluateExpression(self: *Evaluator, expression: AST.Expression, env: *Environment) !Value {
         switch (expression) {
-            .Integer => |int| return self.evaluateIntegerExpression(int),
-            .Bool => |expr| return self.evaluateBooleanExpression(expr),
+            .Integer => |int| return self.evaluateIntegerExpression(int, env),
+            .Bool => |expr| return self.evaluateBooleanExpression(expr, env),
             .Prefix => |expr| {
-                const right = self.evaluateExpression(expr.right.*);
+                const right = try self.evaluateExpression(expr.right.*, env);
                 if (right.isError()) return right;
-                return self.evaluatePrefixExpression(expr.operator, right);
+                return self.evaluatePrefixExpression(expr.operator, right, env);
             },
             .Infix => |expr| {
-                const left = self.evaluateExpression(expr.left.*);
+                const left = try self.evaluateExpression(expr.left.*, env);
                 if (left.isError()) return left;
-                const right = self.evaluateExpression(expr.right.*);
+                const right = try self.evaluateExpression(expr.right.*, env);
                 if (right.isError()) return right;
-                return self.evaluateInfixExpression(expr.operator, left, right);
+                return self.evaluateInfixExpression(expr.operator, left, right, env);
             },
-            .If => |stmt| return self.evaluateIfExpression(stmt),
-            .Ident => |ident| return self.evaluateIdentifier(ident),
-            else => unreachable,
+            .If => |stmt| return self.evaluateIfExpression(stmt, env),
+            .Ident => |ident| return self.evaluateIdentifier(ident, env),
+            .Function => |func| {
+                const params = func.parameters;
+                const body = func.body;
+                const funcVal = Value.Function{
+                    .body = body.*,
+                    .params = params,
+                    .env = env,
+                };
+                return Value.funcValue(funcVal);
+            },
+            .Call => |call| {
+                const function = try self.evaluateExpression(call.function.*, env);
+                if (function.isError()) return function;
+                const args = try self.evaluateExpressions(call.args, env);
+                if (args.len == 1 and args[0].isError()) return args[0];
+                const funcResult = try self.applyFunction(function, args);
+                return funcResult;
+            },
         }
     }
 
-    fn evaluateBlockStatement(self: *Evaluator, block: AST.BlockStatement) Value {
+    fn evaluateExpressions(self: *Evaluator, exps: []*AST.Expression, env: *Environment) anyerror![]Value {
+        var vals = std.ArrayList(Value).init(self.alloc);
+        for (exps) |expr| {
+            const evaluated = try self.evaluateExpression(expr.*, env);
+            if (evaluated.isError()) {
+                vals.clearAndFree();
+                try vals.append(evaluated);
+                return vals.items;
+            }
+            try vals.append(evaluated);
+        }
+        return vals.items;
+    }
+
+    fn evaluateBlockStatement(self: *Evaluator, block: AST.BlockStatement, env: *Environment) !Value {
         var result: Value = undefined;
         for (block.statements.items) |stmt| {
-            result = self.evaluateStatement(stmt.*);
+            result = try self.evaluateStatement(stmt.*, env);
             if (!result.isNil()) {
                 if (result.valType == Value.ValueType.VAL_RETURN or result.valType == Value.ValueType.ERROR) return result;
             }
@@ -140,23 +193,24 @@ pub const Evaluator = struct {
         return result;
     }
 
-    fn evaluateExpressionStatement(self: *Evaluator, statement: AST.ExpressionStatement) Value {
-        return self.evaluateExpression(statement.expression.*);
+    fn evaluateExpressionStatement(self: *Evaluator, statement: AST.ExpressionStatement, env: *Environment) !Value {
+        const stmt = try self.evaluateExpression(statement.expression.*, env);
+        return stmt;
     }
 
-    fn evaluateStatement(self: *Evaluator, statement: AST.Statement) Value {
+    fn evaluateStatement(self: *Evaluator, statement: AST.Statement, env: *Environment) anyerror!Value {
         switch (statement) {
-            .Expr => |expr| return self.evaluateExpressionStatement(expr),
-            .Block => |block| return self.evaluateBlockStatement(block),
+            .Expr => |expr| return self.evaluateExpressionStatement(expr, env),
+            .Block => |block| return self.evaluateBlockStatement(block, env),
             .Return => |ret| {
-                const val = self.evaluateExpression(ret.returnValue.*);
+                const val = try self.evaluateExpression(ret.returnValue.*, env);
                 if (val.isError()) return val;
                 return Value.returnValue(val);
             },
             .Let => |stmt| {
-                const val = self.evaluateExpression(stmt.value.*);
+                const val = try self.evaluateExpression(stmt.value.*, env);
                 if (val.isError()) return val;
-                if (self.env.set(stmt.name.value, val)) |value| {
+                if (env.set(stmt.name.value, val)) |value| {
                     return value;
                 } else |_| {
                     @panic("Unable to add key to hash store");
@@ -166,10 +220,10 @@ pub const Evaluator = struct {
         }
     }
 
-    pub fn evaluate(self: *Evaluator, program: *AST.Program) Value {
+    pub fn evaluate(self: *Evaluator, program: *AST.Program, env: *Environment) !Value {
         var val: Value = undefined;
         for (program.statements.items) |stmt| {
-            val = self.evaluateStatement(stmt);
+            val = try self.evaluateStatement(stmt, env);
             if (val.isReturn()) return val.asReturn();
         }
         std.debug.print("Value is: ", .{});
@@ -187,9 +241,8 @@ fn testEval(alloc: std.mem.Allocator, input: []const u8) !Value {
     const program = try parser.parseProgram();
 
     const environment = try Environment.init(alloc);
-
-    const evaluator = try Evaluator.init(alloc, environment);
-    return evaluator.evaluate(program);
+    const evaluator = try Evaluator.init(alloc);
+    return evaluator.evaluate(program, environment);
 }
 
 fn testIntegerValue(value: Value, expected: i64) bool {
@@ -329,7 +382,7 @@ test "test return statement" {
 
     for (tests) |tt| {
         const val = try testEval(testingAlloc, tt.input);
-        assert(Value.valuesEqual(val, tt.expected));
+        try testing.expect(Value.valuesEqual(val, tt.expected));
     }
 }
 
@@ -370,5 +423,49 @@ test "test let statements" {
         const val = try testEval(testingAlloc, tt.input);
         try testing.expect(val.isInt());
         try testing.expectEqual(val.asInt(), tt.expected);
+    }
+}
+
+test "test functions" {
+    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
+    const testingAlloc = testArena.allocator();
+    defer testArena.deinit();
+    const input = "fn(x) { x + 2; };";
+    const val = try testEval(testingAlloc, input);
+
+    try testing.expect(val.isFunc());
+    try testing.expect(val.asFunc().params.len == 1);
+    try testing.expectEqualStrings(val.asFunc().params[0].*.value, "x");
+}
+
+test "test function applications" {
+    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
+    const testingAlloc = testArena.allocator();
+    defer testArena.deinit();
+
+    const TestType = struct {
+        input: []const u8,
+        expected: i64,
+    };
+
+    const tests = [_]TestType{
+        .{ .input = "let identity = fn(x) { x; }; identity(5);", .expected = 5 },
+        .{ .input = "let identity = fn(x) { return x; }; identity(5);", .expected = 5 },
+        .{ .input = "let double = fn(x) { return x * 2; }; double(5);", .expected = 10 },
+        .{ .input = "let add = fn(x, y) { return x + y; }; add(5, 10);", .expected = 15 },
+    };
+
+    for (tests) |tt| {
+        const val = try testEval(testingAlloc, tt.input);
+        if (val.isReturn()) {
+            try testing.expect(val.isReturn());
+            const ret = val.asReturn();
+            ret.printValue();
+            try testing.expect(ret.isInt());
+        }
+        if (val.isInt()) {
+            try testing.expect(val.isInt());
+            try testing.expectEqual(val.asInt(), tt.expected);
+        }
     }
 }

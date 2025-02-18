@@ -13,27 +13,28 @@ pub fn startRepl(arena: *std.heap.ArenaAllocator) !void {
     std.debug.print("Welcome to zig compiler repl: \\q to quit repl.\n", .{});
     var input: []u8 = undefined;
 
+    const env = try Environment.init(alloc);
+
     while (!std.mem.eql(u8, input, "\\q")) {
         std.debug.print(">> ", .{});
         var buf: [1024]u8 = undefined;
         input = try getInput(&buf);
-        try processInput(arena, alloc, input);
+        try processInput(arena, alloc, input, env);
     }
 }
 
-fn processInput(arena: *std.heap.ArenaAllocator, alloc: std.mem.Allocator, input: []u8) !void {
+fn processInput(_: *std.heap.ArenaAllocator, alloc: std.mem.Allocator, input: []u8, env: *Environment) !void {
     const lex = try lexer.init(alloc, input);
     try lex.tokenize();
     const parser = try Parser.init(alloc, lex);
     const program = try parser.parseProgram();
-    const environment = try Environment.init(alloc);
-    const evaluator = try Evaluator.init(alloc, environment);
-    _ = evaluator.evaluate(program);
+    const evaluator = try Evaluator.init(alloc);
+    _ = try evaluator.evaluate(program, env);
     // const bc = try ByteCode.init(alloc, program);
     // try bc.generate();
     // const vm = try VM.init(alloc, bc);
     // _ = try vm.run();
-    std.debug.assert(arena.*.reset(std.heap.ArenaAllocator.ResetMode.free_all));
+    //std.debug.assert(arena.*.reset(std.heap.ArenaAllocator.ResetMode.free_all));
 }
 
 fn getInput(buf: *[1024]u8) ![]u8 {

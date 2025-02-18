@@ -5,6 +5,81 @@ const std = @import("std");
 const Token = @import("../tokens.zig").Token;
 const TokenType = @import("../tokens.zig").TokenType;
 
+pub const Node = union(enum) {
+    program: *Program,
+    statement: *Statement,
+    expression: *Expression,
+    pub fn toString(self: Node) []const u8 {
+        switch (self) {
+            inline else => |case| case.toString(),
+        }
+    }
+};
+
+pub const Program = struct {
+    statements: std.ArrayList(Statement),
+    pub fn tokenLiteral(self: Program) []const u8 {
+        if (self.statements.items.len > 0) {
+            return self.statements.items[0].tokenLiteral();
+        } else {
+            return "";
+        }
+    }
+    pub fn print(self: Program) void {
+        if (self.statements.items.len > 0) {
+            for (self.statements.items) |stmt| {
+                stmt.print();
+            }
+        } else {
+            std.debug.print("No statemenets to print.\n", .{});
+        }
+    }
+};
+
+pub const Statement = union(enum) {
+    Let: LetStatement,
+    Return: ReturnStatement,
+    Expr: ExpressionStatement,
+    Print: PrintStatement,
+    Block: BlockStatement,
+    //Other statement variants
+    pub fn tokenLiteral(self: Statement) []const u8 {
+        return switch (self) {
+            inline else => |stmt| stmt.tokenLiteral(),
+        };
+    }
+
+    pub fn print(self: Statement) void {
+        switch (self) {
+            inline else => |stmt| stmt.print(),
+        }
+    }
+};
+
+pub const Expression = union(enum) {
+    Integer: IntegerExpression,
+    Ident: Identifier,
+    Prefix: PrefixExpression,
+    Infix: InfixExpression,
+    If: IfExpression,
+    Bool: BooleanExpression,
+    Function: FunctionLiteral,
+    Call: CallExpression,
+    pub fn tokenLiteral(self: Expression) []const u8 {
+        return switch (self) {
+            inline else => |case| case.tokenLiteral(),
+        };
+    }
+
+    pub fn print(self: Expression) void {
+        switch (self) {
+            inline else => |case| case.print(),
+        }
+    }
+};
+
+// OPERATORS //
+
 pub const PrefixOperator = enum {
     BANG,
     MINUS,
@@ -56,17 +131,6 @@ pub const InfixOperator = enum {
     }
 };
 
-pub const NodeType = enum {
-    PROGRAM_NODE,
-    EXPRESSION_NODE,
-    EXPRESSION_STATEMENT_NODE,
-    RETURN_STATEMENT_NODE,
-    LET_STATEMENT_NODE,
-    INTEGER_LITERAL_NODE,
-    BOOLEAN_LITERAL_NODE,
-    BLOCK_STATEMENTS_NODE,
-};
-
 pub const Precedence = enum(u8) {
     LOWEST,
     LOGICAL_OR,
@@ -97,10 +161,123 @@ pub fn getTokenPrecedence(token: *Token) Precedence {
     }
 }
 
+// STATEMENTS //
+pub const PrintStatement = struct {
+    token: Token,
+    value: *Expression,
+    pub fn tokenLiteral(self: PrintStatement) []const u8 {
+        return self.token.Literal;
+    }
+    pub fn print(self: PrintStatement) void {
+        std.debug.print("{s} : ", .{self.token.Literal});
+        self.value.print();
+    }
+};
+
+pub const BlockStatement = struct {
+    token: Token,
+    statements: std.ArrayList(Statement),
+    pub fn tokenLiteral(self: BlockStatement) []const u8 {
+        return self.token.Literal;
+    }
+
+    pub fn print(self: BlockStatement) void {
+        for (self.statements.items) |stmt| {
+            stmt.print();
+        }
+    }
+};
+
+pub const LetStatement = struct {
+    token: Token,
+    name: Identifier,
+    value: *Expression,
+    pub fn tokenLiteral(self: LetStatement) []const u8 {
+        return self.token.Literal;
+    }
+
+    pub fn print(self: LetStatement) void {
+        std.debug.print("{s} ", .{self.tokenLiteral()});
+        self.name.print();
+        std.debug.print(" = ", .{});
+        self.value.print();
+        std.debug.print(";\n", .{});
+    }
+};
+
+pub const ExpressionStatement = struct {
+    token: Token,
+    expression: *Expression,
+    pub fn tokenLiteral(self: ExpressionStatement) []const u8 {
+        return self.token.Literal;
+    }
+    pub fn print(self: ExpressionStatement) void {
+        self.expression.print();
+    }
+};
+
+pub const ReturnStatement = struct {
+    token: Token,
+    returnValue: *Expression,
+    pub fn tokenLiteral(self: ReturnStatement) []const u8 {
+        return self.token.Literal;
+    }
+    pub fn print(self: ReturnStatement) void {
+        std.debug.print("{s} ", .{self.tokenLiteral()});
+        self.returnValue.print();
+        std.debug.print("\n", .{});
+    }
+};
+
+// EXPRESSIONS //
+pub const PrefixExpression = struct {
+    token: Token,
+    operator: PrefixOperator,
+    right: *Expression,
+    pub fn tokenLiteral(self: PrefixExpression) []const u8 {
+        return self.token.Literal;
+    }
+    pub fn print(self: PrefixExpression) void {
+        std.debug.print("(", .{});
+        std.debug.print("{any}", .{self.operator});
+        self.right.print();
+        std.debug.print(")\n", .{});
+    }
+};
+
+pub const InfixExpression = struct {
+    token: Token,
+    left: *Expression,
+    operator: InfixOperator,
+    right: *Expression,
+    pub fn tokenLiteral(self: InfixExpression) []const u8 {
+        return self.token.Literal;
+    }
+
+    pub fn print(self: InfixExpression) void {
+        std.debug.print("(", .{});
+        self.left.print();
+        std.debug.print(" {any} ", .{self.operator});
+        self.right.print();
+        std.debug.print(")\n", .{});
+    }
+};
+
+pub const Identifier = struct {
+    token: Token,
+    value: []const u8,
+    pub fn tokenLiteral(self: Identifier) []const u8 {
+        return self.token.Literal;
+    }
+    pub fn print(self: Identifier) void {
+        std.debug.print("{s}\n", .{self.value});
+    }
+};
+
 pub const FunctionLiteral = struct {
     token: Token,
-    parameters: []*Identifier,
-    body: *BlockStatement,
+    parameters: std.ArrayList(Identifier),
+    body: BlockStatement,
     pub fn tokenLiteral(self: FunctionLiteral) []const u8 {
         return self.token.Literal;
     }
@@ -108,7 +285,7 @@ pub const FunctionLiteral = struct {
     pub fn print(self: FunctionLiteral) void {
         std.debug.print("{s}", .{self.tokenLiteral()});
         std.debug.print("(", .{});
-        for (self.parameters, 0..) |arg, idx| {
+        for (self.parameters.items, 0..) |arg, idx| {
             std.debug.print("param {d} : ", .{idx});
             arg.print();
             std.debug.print("\n", .{});
@@ -121,7 +298,7 @@ pub const FunctionLiteral = struct {
 pub const CallExpression = struct {
     token: Token,
     function: *Expression,
-    args: []*Expression,
+    args: std.ArrayList(Expression),
     pub fn tokenLiteral(self: CallExpression) []const u8 {
         return self.token.Length;
     }
@@ -138,35 +315,11 @@ pub const CallExpression = struct {
     }
 };
 
-pub const Statement = union(enum) {
-    Let: LetStatement,
-    Return: ReturnStatement,
-    Expr: ExpressionStatement,
-    Print: PrintStatement,
-    Block: BlockStatement,
-    //Other statement variants
-    pub fn tokenLiteral(self: Statement) []const u8 {
-        return switch (self) {
-            .Let => |stmt| stmt.tokenLiteral(),
-            .Return => |stmt| stmt.tokenLiteral(),
-            .Expr => |stmt| stmt.tokenLiteral(),
-            .Print => |stmt| stmt.tokenLiteral(),
-            .Block => |stmt| stmt.tokenLiteral(),
-        };
-    }
-
-    pub fn print(self: Statement) void {
-        switch (self) {
-            inline else => |stmt| stmt.print(),
-        }
-    }
-};
-
 pub const IfExpression = struct {
     token: Token,
     condition: *Expression,
-    consequence: *Statement,
-    alternative: ?*Statement,
+    consequence: BlockStatement,
+    alternative: ?BlockStatement,
     pub fn tokenLiteral(self: IfExpression) []const u8 {
         return self.token.Literal;
     }
@@ -205,213 +358,3 @@ pub const BooleanExpression = struct {
         std.debug.print("{s}", .{self.token.Literal});
     }
 };
-
-pub const Expression = union(enum) {
-    Integer: IntegerExpression,
-    Ident: Identifier,
-    Prefix: PrefixExpression,
-    Infix: InfixExpression,
-    If: IfExpression,
-    Bool: BooleanExpression,
-    Function: FunctionLiteral,
-    Call: CallExpression,
-    pub fn tokenLiteral(self: Expression) []const u8 {
-        return switch (self) {
-            IntegerExpression => |expr| expr.tokenLiteral(),
-            Identifier => |expr| expr.tokenLiteral(),
-            PrefixExpression => |expr| expr.tokenLiteral(),
-            InfixExpression => |expr| expr.tokenLiteral(),
-            IfExpression => |expr| expr.tokenLiteral(),
-            BooleanExpression => |expr| expr.tokenLiteral(),
-            FunctionLiteral => |expr| expr.tokenLiteral(),
-            CallExpression => |expr| expr.tokenLiteral(),
-        };
-    }
-
-    pub fn print(self: Expression) void {
-        switch (self) {
-            inline else => |case| case.print(),
-        }
-    }
-};
-
-pub const PrintStatement = struct {
-    token: Token,
-    value: *Expression,
-    pub fn tokenLiteral(self: PrintStatement) []const u8 {
-        return self.token.Literal;
-    }
-    pub fn print(self: PrintStatement) void {
-        std.debug.print("{s} : ", .{self.token.Literal});
-        self.value.print();
-    }
-};
-
-pub const BlockStatement = struct {
-    token: Token,
-    statements: std.ArrayList(*Statement),
-    pub fn tokenLiteral(self: BlockStatement) []const u8 {
-        return self.token.Literal;
-    }
-
-    pub fn print(self: BlockStatement) void {
-        for (self.statements.items) |stmt| {
-            stmt.print();
-        }
-    }
-};
-
-pub const LetStatement = struct {
-    token: Token,
-    name: Identifier,
-    value: *Expression,
-    pub fn tokenLiteral(self: LetStatement) []const u8 {
-        return self.token.Literal;
-    }
-
-    pub fn print(self: LetStatement) void {
-        std.debug.print("{s} ", .{self.tokenLiteral()});
-        self.name.print();
-        std.debug.print(" = ", .{});
-        self.value.print();
-        std.debug.print(";\n", .{});
-    }
-};
-
-pub const PrefixExpression = struct {
-    token: Token,
-    operator: PrefixOperator,
-    right: *Expression,
-    pub fn tokenLiteral(self: PrefixExpression) []const u8 {
-        return self.token.Literal;
-    }
-    pub fn print(self: PrefixExpression) void {
-        std.debug.print("(", .{});
-        std.debug.print("{any}", .{self.operator});
-        self.right.print();
-        std.debug.print(")\n", .{});
-    }
-};
-
-pub const InfixExpression = struct {
-    token: Token,
-    left: *Expression,
-    operator: InfixOperator,
-    right: *Expression,
-    pub fn tokenLiteral(self: InfixExpression) []const u8 {
-        return self.token.Literal;
-    }
-
-    pub fn print(self: InfixExpression) void {
-        std.debug.print("(", .{});
-        self.left.print();
-        std.debug.print(" {any} ", .{self.operator});
-        self.right.print();
-        std.debug.print(")\n", .{});
-    }
-};
-
-pub const ExpressionStatement = struct {
-    token: Token,
-    expression: *Expression,
-    pub fn tokenLiteral(self: ExpressionStatement) []const u8 {
-        return self.token.Literal;
-    }
-    pub fn print(self: ExpressionStatement) void {
-        self.expression.print();
-    }
-};
-
-pub const ReturnStatement = struct {
-    token: Token,
-    returnValue: *Expression,
-    pub fn tokenLiteral(self: ReturnStatement) []const u8 {
-        return self.token.Literal;
-    }
-    pub fn print(self: ReturnStatement) void {
-        std.debug.print("{s} ", .{self.tokenLiteral()});
-        self.returnValue.print();
-        std.debug.print("\n", .{});
-    }
-};
-pub const Identifier = struct {
-    token: Token,
-    value: []const u8,
-    pub fn tokenLiteral(self: Identifier) []const u8 {
-        return self.token.Literal;
-    }
-    pub fn print(self: Identifier) void {
-        std.debug.print("{s}\n", .{self.value});
-    }
-};
-
-pub const Program = struct {
-    statements: std.ArrayList(Statement),
-    alloc: std.mem.Allocator,
-    const Self = @This();
-    pub fn tokenLiteral(self: Self) []const u8 {
-        if (self.statements.items.len > 0) {
-            return self.statements.items[0].tokenLiteral();
-        } else {
-            return "";
-        }
-    }
-
-    pub fn print(self: Self) void {
-        if (self.statements.items.len > 0) {
-            for (self.statements.items) |stmt| {
-                stmt.print();
-            }
-        } else {
-            std.debug.print("No statemenets to print.\n", .{});
-        }
-    }
-
-    pub fn init(alloc: std.mem.Allocator) !*Self {
-        const p = try alloc.create(Self);
-        p.* = Self{
-            .statements = std.ArrayList(Statement).init(alloc),
-            .alloc = alloc,
-        };
-        return p;
-    }
-
-    //pub fn destroy(self: *Self) void {
-    // for (self.statements.items) |stmt| {
-    //     destroyStatement(self.alloc, @constCast(&stmt));
-    // }
-    //  self.statements.deinit();
-    //self.alloc.destroy(self);
-    //}
-};
-
-//fn destroyExpression(alloc: std.mem.Allocator, ptr: *Expression) void {
-//    switch (ptr.*) {
-//        .Infix => |e| {
-//            destroyExpression(alloc, e.left);
-//            destroyExpression(alloc, e.right);
-//        },
-//        .Prefix => |e| {
-//            destroyExpression(alloc, e.right);
-//        },
-//        .Integer, .Ident => {
-//            return;
-//        },
-//    }
-//    alloc.destroy(ptr);
-//}
-//
-//fn destroyStatement(alloc: std.mem.Allocator, ptr: *Statement) void {
-//    switch (ptr.*) {
-//        .Expr => |s| {
-//            destroyExpression(alloc, s.expression);
-//        },
-//        .Return => |s| {
-//            destroyExpression(alloc, s.returnValue);
-//        },
-//        .Let => |s| {
-//            destroyExpression(alloc, s.value);
-//        },
-//    }
-//}
-//
