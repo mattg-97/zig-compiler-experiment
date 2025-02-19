@@ -336,6 +336,12 @@ pub const Evaluator = struct {
         if (std.mem.eql(u8, "len", ident.value)) {
             return try Objects.BuiltIn.new(self.alloc, BuiltinFunction.len);
         }
+        if (std.mem.eql(u8, "first", ident.value)) {
+            return try Objects.BuiltIn.new(self.alloc, BuiltinFunction.first);
+        }
+        if (std.mem.eql(u8, "last", ident.value)) {
+            return try Objects.BuiltIn.new(self.alloc, BuiltinFunction.last);
+        }
         return try Objects.Error.new(self.alloc, "object doesnt exist in the hash store.", .{});
     }
 
