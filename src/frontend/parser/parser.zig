@@ -5,7 +5,37 @@ const Lexer = @import("../lexer.zig");
 const Token = @import("../tokens.zig").Token;
 const TokenType = @import("../tokens.zig").TokenType;
 const AST = @import("ast.zig");
-const BoxValue = @import("../../utils/memory.zig").BoxValue;
+
+const Priority = enum(u4) {
+    LOWEST = 0,
+    EQUALS = 1,
+    LESSGREATER = 2,
+    SUM = 3,
+    PRODUCT = 4,
+    PREFIX = 5,
+    CALL = 6,
+    INDEX = 7,
+
+    fn lessThan(self: Priority, other: Priority) bool {
+        return @intFromEnum(self) < @intFromEnum(other);
+    }
+
+    fn fromToken(token: Token) Priority {
+        return switch (token.Type) {
+            .EQ => .EQUALS,
+            .NOT_EQ => .EQUALS,
+            .LT => .LESSGREATER,
+            .GT => .LESSGREATER,
+            .PLUS => .SUM,
+            .MINUS => .SUM,
+            .SLASH => .PRODUCT,
+            .ASTERISK => .PRODUCT,
+            .LPAREN => .CALL,
+            .LBRACE => .INDEX,
+            else => .LOWEST,
+        };
+    }
+};
 
 pub const ParserError = error{
     ExpectOperator,
@@ -73,9 +103,9 @@ pub const Parser = struct {
         const letToken = self.current_token;
         try self.expectPeek(.IDENT);
 
-        const name = AST.Identifier{
-            .token = self.current_token,
-            .value = self.current_token.Literal,
+        const name = switch (self.current_token.Type) {
+            .IDENT => AST.Identifier{ .token = self.current_token, .value = self.current_token.Literal },
+            else => unreachable,
         };
         try self.expectPeek(.ASSIGN);
         self.nextToken();
@@ -106,10 +136,13 @@ pub const Parser = struct {
 
         self.nextToken();
 
-        while (self.current_token.Type != TokenType.RBRACE and self.current_token.Type != TokenType.EOF) {
+        while (!self.currentTokenIs(.RBRACE) and !self.currentTokenIs(.EOF)) {
             const stmt = try self.parseStatement();
             statements.append(stmt) catch return ParserError.InvalidBlockStatement;
             self.nextToken();
+        }
+        for (statements.items) |stmt| {
+            stmt.print();
         }
         return AST.BlockStatement{ .statements = statements, .token = blockToken };
     }
@@ -125,14 +158,21 @@ pub const Parser = struct {
         return AST.ExpressionStatement{ .expression = exprPtr, .token = exprStmtToken };
     }
 
-    fn parseExpression(self: *Self, precedence: AST.Precedence) ParserError!AST.Expression {
+    fn parseExpression(self: *Self, precedence: Priority) ParserError!AST.Expression {
         var left = try self.parsePrefixTokens(self.current_token.Type);
-        while ((self.peek_token.Type != TokenType.SEMICOLON or self.peek_token.Type != TokenType.EOF) and @intFromEnum(precedence) <= @intFromEnum(AST.getTokenPrecedence(&self.peek_token))) {
+        while (!self.peekTokenIs(.SEMICOLON) and precedence.lessThan(Priority.fromToken(self.peek_token))) {
             const leftExprPtr = self.alloc.create(AST.Expression) catch return ParserError.MemoryAllocation;
             leftExprPtr.* = left;
             left = try self.parseInfixTokens(self.peek_token.Type, leftExprPtr);
         }
         return left;
+    }
+
+    fn peekTokenIs(self: Self, tokenType: TokenType) bool {
+        return @intFromEnum(self.peek_token.Type) == @intFromEnum(tokenType);
+    }
+    fn currentTokenIs(self: Self, tokenType: TokenType) bool {
+        return @intFromEnum(self.current_token.Type) == @intFromEnum(tokenType);
     }
 
     fn parsePrefixTokens(self: *Self, token: TokenType) ParserError!AST.Expression {
@@ -193,15 +233,16 @@ pub const Parser = struct {
     }
 
     fn parseInfix(self: *Self, left: *AST.Expression) ParserError!AST.InfixExpression {
+        const infixToken = self.current_token;
         const op = AST.InfixOperator.fromString(self.current_token.Literal);
-        const prec = AST.getTokenPrecedence(&self.current_token);
+        const prec = Priority.fromToken(self.current_token);
 
         self.nextToken();
 
         const right = try self.parseExpression(prec);
         const exprPointer = self.alloc.create(AST.Expression) catch return ParserError.MemoryAllocation;
         exprPointer.* = right;
-        return AST.InfixExpression{ .token = self.current_token, .left = left, .operator = op, .right = exprPointer };
+        return AST.InfixExpression{ .token = infixToken, .left = left, .operator = op, .right = exprPointer };
     }
 
     fn parseIfExpression(self: *Self) ParserError!AST.IfExpression {
@@ -235,12 +276,14 @@ pub const Parser = struct {
         try self.expectPeek(.LBRACE);
 
         const body = try self.parseBlockStatement();
-        return AST.FunctionLiteral{ .token = self.current_token, .body = body, .parameters = params };
+        const bodyPtr = self.alloc.create(AST.BlockStatement) catch return ParserError.MemoryAllocation;
+        bodyPtr.* = body;
+        return AST.FunctionLiteral{ .token = self.current_token, .body = bodyPtr, .parameters = params };
     }
 
     fn parseFunctionParameters(self: *Self) ParserError!std.ArrayList(AST.Identifier) {
         var params = std.ArrayList(AST.Identifier).init(self.alloc);
-        if (self.peek_token.Type == .RPAREN) {
+        if (self.peekTokenIs(.RPAREN)) {
             self.nextToken();
             return params;
         }
@@ -248,7 +291,7 @@ pub const Parser = struct {
 
         params.append(try self.parseIdent()) catch return ParserError.InvalidFunctionParam;
 
-        while (self.peek_token.Type == .COMMA) {
+        while (self.peekTokenIs(.COMMA)) {
             self.nextToken();
             self.nextToken();
             params.append(try self.parseIdent()) catch return ParserError.InvalidFunctionParam;
@@ -269,14 +312,14 @@ pub const Parser = struct {
         }
 
         self.nextToken();
-        exprList.append(try self.parseExpression(AST.Precedence.LOWEST)) catch return ParserError.InvalidExpressionList;
+        exprList.append(try self.parseExpression(Priority.LOWEST)) catch return ParserError.InvalidExpressionList;
 
         while (self.peek_token.Type == TokenType.COMMA) {
             self.nextToken();
             self.nextToken();
-            exprList.append(try self.parseExpression(AST.Precedence.LOWEST)) catch return ParserError.InvalidExpressionList;
+            exprList.append(try self.parseExpression(Priority.LOWEST)) catch return ParserError.InvalidExpressionList;
         }
-        try self.expectPeek(TokenType.RPAREN);
+        try self.expectPeek(closeToken);
         return exprList;
     }
 
@@ -294,17 +337,17 @@ pub const Parser = struct {
         }
     }
 
-    fn peekPrecedence(self: *Parser) AST.Precedence {
+    fn peekPrecedence(self: *Parser) Priority {
         return AST.getTokenPrecedence(&self.peek_token);
     }
 
-    fn currentPrecedence(self: *Parser) AST.Precedence {
+    fn currentPrecedence(self: *Parser) Priority {
         return AST.getTokenPrecedence(&self.current_token);
     }
 
     fn parsePrintStatement(self: *Parser) !*AST.Statement {
         self.nextToken();
-        const printStmt: AST.PrintStatement = .{ .token = self.current_token, .value = try self.parseExpression(AST.Precedence.LOWEST) };
+        const printStmt: AST.PrintStatement = .{ .token = self.current_token, .value = try self.parseExpression(Priority.LOWEST) };
         const stmt: AST.Statement = .{ .Print = printStmt };
         while (self.current_token.Type != TokenType.SEMICOLON) : (self.nextToken()) {}
         const stmtPointer = try self.alloc.create(AST.Statement);

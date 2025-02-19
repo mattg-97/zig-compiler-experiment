@@ -14,13 +14,13 @@ pub fn startRepl(arena: *std.heap.ArenaAllocator) !void {
     std.debug.print("Welcome to zig compiler repl: \\q to quit repl.\n", .{});
     var input: []u8 = undefined;
 
-    const env = try Environment.init(alloc);
+    var env = Environment.init(alloc);
 
     while (!std.mem.eql(u8, input, "\\q")) {
         std.debug.print(">> ", .{});
         var buf: [1024]u8 = undefined;
         input = try getInput(&buf);
-        try processInput(arena, alloc, input, env);
+        try processInput(arena, alloc, input, &env);
     }
 }
 

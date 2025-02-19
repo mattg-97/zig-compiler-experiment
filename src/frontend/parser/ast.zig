@@ -277,7 +277,7 @@ pub const Identifier = struct {
 pub const FunctionLiteral = struct {
     token: Token,
     parameters: std.ArrayList(Identifier),
-    body: BlockStatement,
+    body: *BlockStatement,
     pub fn tokenLiteral(self: FunctionLiteral) []const u8 {
         return self.token.Literal;
     }
@@ -306,7 +306,7 @@ pub const CallExpression = struct {
     pub fn print(self: CallExpression) void {
         self.function.print();
         std.debug.print("(", .{});
-        for (self.args, 0..) |arg, idx| {
+        for (self.args.items, 0..) |arg, idx| {
             std.debug.print("arg {d} : ", .{idx});
             arg.print();
             std.debug.print("\n", .{});
