@@ -2,7 +2,7 @@ const Chunk = @This();
 
 const std = @import("std");
 
-const Value = @import("value.zig");
+const Object = @import("object.zig").Object;
 
 pub const OpCode = enum(u8) {
     OP_CONSTANT,
@@ -25,7 +25,7 @@ pub const OpCode = enum(u8) {
 
 alloc: std.mem.Allocator,
 codes: std.ArrayList(u8),
-constants: std.ArrayList(Value),
+constants: std.ArrayList(Object),
 lines: std.ArrayList(usize),
 
 pub fn init(alloc: std.mem.Allocator) !*Chunk {
@@ -33,7 +33,7 @@ pub fn init(alloc: std.mem.Allocator) !*Chunk {
     chunk.* = .{
         .alloc = alloc,
         .codes = std.ArrayList(u8).init(alloc),
-        .constants = std.ArrayList(Value).init(alloc),
+        .constants = std.ArrayList(Object).init(alloc),
         .lines = std.ArrayList(usize).init(alloc),
     };
     return chunk;
@@ -44,13 +44,13 @@ pub fn writeChunk(self: *Chunk, byte: u8, line: usize) !void {
     try self.lines.append(line);
 }
 
-pub fn addConstant(self: *Chunk, value: Value) !usize {
-    try self.constants.append(value);
+pub fn addConstant(self: *Chunk, object: Object) !usize {
+    try self.constants.append(object);
     return self.constants.items.len - 1;
 }
 
-pub fn writeConstant(self: *Chunk, value: Value, line: usize) !void {
-    const constIndex = try self.addConstant(value);
+pub fn writeConstant(self: *Chunk, object: Object, line: usize) !void {
+    const constIndex = try self.addConstant(object);
     try self.codes.append((constIndex >> 16) & 0xFF);
     try self.lines.append(line);
     try self.codes.append((constIndex >> 8) & 0xFF);

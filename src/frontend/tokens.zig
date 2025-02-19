@@ -73,7 +73,7 @@ Literal: []const u8,
 Line: usize,
 Length: usize,
 const Self = @This();
-pub fn newToken(tokenType: TokenType, lit: ?[]const u8, line: usize) !Self {
+pub fn newToken(tokenType: TokenType, lit: ?[]const u8, line: usize) Self {
     if (lit == null) {
         return Self{
             .Type = tokenType,
@@ -91,22 +91,22 @@ pub fn newToken(tokenType: TokenType, lit: ?[]const u8, line: usize) !Self {
     }
 }
 
-const Keyword = struct { Key: []const u8, Value: TokenType };
+const Keyword = struct { Key: []const u8, Object: TokenType };
 const map = [_]Keyword{
-    .{ .Key = "fn", .Value = TokenType.FUNCTION },
-    .{ .Key = "let", .Value = TokenType.LET },
-    .{ .Key = "true", .Value = TokenType.TRUE },
-    .{ .Key = "false", .Value = TokenType.FALSE },
-    .{ .Key = "if", .Value = TokenType.IF },
-    .{ .Key = "else", .Value = TokenType.ELSE },
-    .{ .Key = "return", .Value = TokenType.RETURN },
-    .{ .Key = "print", .Value = TokenType.PRINT },
+    .{ .Key = "fn", .Object = TokenType.FUNCTION },
+    .{ .Key = "let", .Object = TokenType.LET },
+    .{ .Key = "true", .Object = TokenType.TRUE },
+    .{ .Key = "false", .Object = TokenType.FALSE },
+    .{ .Key = "if", .Object = TokenType.IF },
+    .{ .Key = "else", .Object = TokenType.ELSE },
+    .{ .Key = "return", .Object = TokenType.RETURN },
+    .{ .Key = "print", .Object = TokenType.PRINT },
 };
 
 pub fn lookupIdent(key: []const u8) TokenType {
     for (map) |entry| {
         if (std.mem.eql(u8, entry.Key, key)) {
-            return entry.Value;
+            return entry.Object;
         }
     }
     return TokenType.IDENT;

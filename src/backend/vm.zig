@@ -5,7 +5,7 @@ const hash = std.hash.Fnv1a_32.hash;
 
 const Chunk = @import("types/chunk.zig");
 const OpCode = Chunk.OpCode;
-const Value = @import("types/value.zig");
+const Object = @import("types/object.zig");
 const ByteCode = @import("bytecode.zig");
 const Debug = @import("../utils/debug.zig");
 
@@ -14,9 +14,9 @@ hasher: std.hash.Fnv1a_32,
 chunk: *Chunk,
 ip: std.ArrayList(u8),
 ipCurrent: usize,
-stack: std.ArrayList(Value),
+stack: std.ArrayList(Object),
 strings: std.AutoHashMap(usize, []const u8),
-globals: std.AutoHashMap(usize, Value),
+globals: std.AutoHashMap(usize, Object),
 
 const Result = enum {
     OK,
@@ -32,7 +32,7 @@ pub fn init(alloc: std.mem.Allocator, byteCode: *ByteCode) !*VM {
         .ipCurrent = 0,
         .strings = byteCode.strings,
         .globals = byteCode.globals,
-        .stack = std.ArrayList(Value).init(alloc),
+        .stack = std.ArrayList(Object).init(alloc),
         .hasher = std.hash.Fnv1a_32.init(),
     };
     return vm;
@@ -43,15 +43,15 @@ fn readByte(self: *VM) u8 {
     return self.ip.items[self.ipCurrent - 1];
 }
 
-fn readConstant(self: *VM) Value {
+fn readConstant(self: *VM) Object {
     return self.chunk.constants.items[self.readByte()];
 }
 
 fn readString(self: *VM) []const u8 {
-    return Value.asString(self.readConstant());
+    return Object.asString(self.readConstant());
 }
 
-fn peek(self: *VM) Value {
+fn peek(self: *VM) Object {
     return self.stack.items[self.stack.items.len - 1];
 }
 
@@ -60,7 +60,7 @@ pub fn run(self: *VM) !Result {
         std.debug.print("           ", .{});
         for (self.stack.items) |slot| {
             std.debug.print("[", .{});
-            Value.printValue(slot);
+            Object.printObject(slot);
             std.debug.print("]", .{});
         }
         std.debug.print("\n", .{});
@@ -71,24 +71,24 @@ pub fn run(self: *VM) !Result {
                 try self.stack.append(val);
             },
             OpCode.OP_ADD.asByte() => {
-                const a = Value.asInt(self.stack.pop());
-                const b = Value.asInt(self.stack.pop());
-                try self.stack.append(Value.intValue(a + b));
+                const a = Object.asInt(self.stack.pop());
+                const b = Object.asInt(self.stack.pop());
+                try self.stack.append(Object.intObject(a + b));
             },
             OpCode.OP_SUBTRACT.asByte() => {
-                const a = Value.asInt(self.stack.pop());
-                const b = Value.asInt(self.stack.pop());
-                try self.stack.append(Value.intValue(a - b));
+                const a = Object.asInt(self.stack.pop());
+                const b = Object.asInt(self.stack.pop());
+                try self.stack.append(Object.intObject(a - b));
             },
             OpCode.OP_MULTIPLY.asByte() => {
-                const a = Value.asInt(self.stack.pop());
-                const b = Value.asInt(self.stack.pop());
-                try self.stack.append(Value.intValue(a * b));
+                const a = Object.asInt(self.stack.pop());
+                const b = Object.asInt(self.stack.pop());
+                try self.stack.append(Object.intObject(a * b));
             },
             OpCode.OP_DIVIDE.asByte() => {
-                const a = Value.asInt(self.stack.pop());
-                const b = Value.asInt(self.stack.pop());
-                try self.stack.append(Value.intValue(@divExact(a, b)));
+                const a = Object.asInt(self.stack.pop());
+                const b = Object.asInt(self.stack.pop());
+                try self.stack.append(Object.intObject(@divExact(a, b)));
             },
             OpCode.OP_NEGATE.asByte() => {
                 try self.stack.append(self.stack.pop());
@@ -97,7 +97,7 @@ pub fn run(self: *VM) !Result {
                 _ = self.stack.pop();
             },
             OpCode.OP_PRINT.asByte() => {
-                Value.printValue(self.stack.pop());
+                Object.printObject(self.stack.pop());
             },
             OpCode.OP_SET_GLOBAL.asByte() => {
                 const name = self.readString();
@@ -117,7 +117,7 @@ pub fn run(self: *VM) !Result {
             },
             OpCode.OP_DEFINE_GLOBAL.asByte() => {
                 const name = self.readString();
-                const global = try self.alloc.create(Value);
+                const global = try self.alloc.create(Object);
                 global.* = self.peek();
                 const hashKey = @as(usize, hash(name));
                 try self.globals.put(hashKey, global.*);

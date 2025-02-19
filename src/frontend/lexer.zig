@@ -12,7 +12,6 @@ input: []const u8,
 position: u32,
 readPosition: u32,
 ch: u8,
-tokens: std.ArrayList(token),
 line: usize,
 const log = std.log.scoped(.lexer);
 
@@ -24,7 +23,6 @@ pub fn init(alloc: std.mem.Allocator, input: []const u8) !*Lexer {
         .position = 0,
         .readPosition = 0,
         .ch = 0,
-        .tokens = std.ArrayList(token).init(alloc),
         .line = 0,
     };
 
@@ -32,12 +30,7 @@ pub fn init(alloc: std.mem.Allocator, input: []const u8) !*Lexer {
     return l;
 }
 
-//pub fn destroy(self: *Lexer) void {
-//    self.tokens.deinit();
-//    self.alloc.destroy(self);
-//}
-
-pub fn tokenize(self: *Lexer) !void {
+fn tokenize(self: *Lexer) !void {
     var tok = tokens.Token{
         .Literal = "",
         .Type = tokens.TokenType.ILLEGAL,
@@ -58,7 +51,7 @@ fn readIdentifier(self: *Lexer) []const u8 {
     return self.input[position..self.position];
 }
 
-pub fn nextToken(self: *Lexer) !token {
+pub fn nextToken(self: *Lexer) token {
     var tok: token = token{
         .Literal = "",
         .Type = tokenType.ILLEGAL,
@@ -67,58 +60,55 @@ pub fn nextToken(self: *Lexer) !token {
     };
     self.skipWhitespace();
     switch (self.ch) {
-        ';' => tok = try token.newToken(tokenType.SEMICOLON, null, self.line),
+        ';' => tok = token.newToken(tokenType.SEMICOLON, null, self.line),
         '=' => {
             if (self.peekChar() == '=') {
-                tok = try token.newToken(tokenType.EQ, null, self.line);
+                tok = token.newToken(tokenType.EQ, null, self.line);
                 self.readChar();
             } else {
-                tok = try token.newToken(tokenType.ASSIGN, null, self.line);
+                tok = token.newToken(tokenType.ASSIGN, null, self.line);
             }
         },
-        '(' => tok = try token.newToken(tokenType.LPAREN, null, self.line),
-        ')' => tok = try token.newToken(tokenType.RPAREN, null, self.line),
-        '{' => tok = try token.newToken(tokenType.LBRACE, null, self.line),
-        '}' => tok = try token.newToken(tokenType.RBRACE, null, self.line),
-        ',' => tok = try token.newToken(tokenType.COMMA, null, self.line),
-        '+' => tok = try token.newToken(tokenType.PLUS, null, self.line),
-        '-' => tok = try token.newToken(tokenType.MINUS, null, self.line),
+        '(' => tok = token.newToken(tokenType.LPAREN, null, self.line),
+        ')' => tok = token.newToken(tokenType.RPAREN, null, self.line),
+        '{' => tok = token.newToken(tokenType.LBRACE, null, self.line),
+        '}' => tok = token.newToken(tokenType.RBRACE, null, self.line),
+        ',' => tok = token.newToken(tokenType.COMMA, null, self.line),
+        '+' => tok = token.newToken(tokenType.PLUS, null, self.line),
+        '-' => tok = token.newToken(tokenType.MINUS, null, self.line),
         '!' => {
             if (self.peekChar() == '=') {
-                tok = try token.newToken(tokenType.NOT_EQ, null, self.line);
+                tok = token.newToken(tokenType.NOT_EQ, null, self.line);
                 self.readChar();
             } else {
-                tok = try token.newToken(tokenType.BANG, null, self.line);
+                tok = token.newToken(tokenType.BANG, null, self.line);
             }
         },
-        '/' => tok = try token.newToken(tokenType.SLASH, null, self.line),
-        '*' => tok = try token.newToken(tokenType.ASTERISK, null, self.line),
-        '>' => tok = try token.newToken(tokenType.GT, null, self.line),
-        '<' => tok = try token.newToken(tokenType.LT, null, self.line),
-        '\x00' => tok = try token.newToken(tokenType.EOF, null, self.line),
+        '/' => tok = token.newToken(tokenType.SLASH, null, self.line),
+        '*' => tok = token.newToken(tokenType.ASTERISK, null, self.line),
+        '>' => tok = token.newToken(tokenType.GT, null, self.line),
+        '<' => tok = token.newToken(tokenType.LT, null, self.line),
+        '\x00' => tok = token.newToken(tokenType.EOF, null, self.line),
         else => {
             if (isLetter(self.ch)) {
                 tok.Literal = self.readIdentifier();
                 tok.Type = tokens.lookupIdent(tok.Literal);
                 tok.Line = self.line;
                 log.debug("Token created: {s} of type {s}\n", .{ tok.Literal, tok.Type.toTokenLiteral() });
-                try self.tokens.append(tok);
                 return tok;
             } else if (isDigit(self.ch)) {
                 tok.Type = tokenType.INT;
                 tok.Literal = self.readNumber();
                 tok.Line = self.line;
                 log.debug("Token created: {s} of type {s}\n", .{ tok.Literal, tok.Type.toTokenLiteral() });
-                try self.tokens.append(tok);
                 return tok;
             } else {
-                tok = try token.newToken(tokenType.ILLEGAL, null, self.line);
+                tok = token.newToken(tokenType.ILLEGAL, null, self.line);
             }
         },
     }
     self.readChar();
     log.debug("Token created: {s} of type {s}\n", .{ tok.Literal, tok.Type.toTokenLiteral() });
-    try self.tokens.append(tok);
     return tok;
 }
 

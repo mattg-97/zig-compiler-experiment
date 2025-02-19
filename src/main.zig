@@ -1,5 +1,6 @@
 const std = @import("std");
 const check = std.heap.Check;
+const string = @import("string").String;
 
 const repl = @import("frontend/repl.zig");
 

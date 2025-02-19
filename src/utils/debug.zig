@@ -3,7 +3,7 @@ const Debug = @This();
 const std = @import("std");
 const print = std.debug.print;
 
-const Value = @import("../backend/types/value.zig");
+const Value = @import("../backend/types/object.zig");
 const Chunk = @import("../backend/types/chunk.zig");
 const OpCode = Chunk.OpCode;
 const Token = @import("../frontend/tokens.zig");
