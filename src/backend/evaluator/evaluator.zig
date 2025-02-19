@@ -160,6 +160,15 @@ pub const Evaluator = struct {
             //else => return try Objects.Error.new(self.alloc, "unable to evaluate prefix expression."),
         }
     }
+    fn evaluateStringInfixExpression(self: *Self, operator: AST.InfixOperator, left: *const Objects.String, right: *const Objects.String) EvaluatorError!*Object {
+        const leftVal = left.*.value;
+        const rightVal = right.*.value;
+        switch (operator) {
+            .PLUS => return Objects.String.new(self.alloc, std.fmt.allocPrint(self.alloc, "{s}{s}", .{ leftVal, rightVal }) catch return EvaluatorError.MemoryAllocation),
+            else => return Objects.Error.new(self.alloc, "You can only use the '+' operator on strings.", .{}),
+        }
+    }
+
     fn evaluateIntegerInfixExpression(self: *Evaluator, operator: AST.InfixOperator, left: *Objects.Integer, right: *Objects.Integer) EvaluatorError!*Object {
         const leftVal = left.*.value;
         const rightVal = right.*.value;
@@ -183,6 +192,14 @@ pub const Evaluator = struct {
                         return try self.evaluateIntegerInfixExpression(operator, @constCast(&leftInt), @constCast(&rightInt));
                     },
                     else => return Objects.Error.new(self.alloc, "type mismatch: {s} {s} {s}", .{ leftInt.typeName(), operator.toString(), right.typeName() }),
+                }
+            },
+            .string => |leftStr| {
+                switch (right.*) {
+                    .string => |rightStr| {
+                        return try self.evaluateStringInfixExpression(operator, &leftStr, &rightStr);
+                    },
+                    else => return Objects.Error.new(self.alloc, "type mismatch: {s} {s} {s}", .{ leftStr.typeName(), operator.toString(), right.typeName() }),
                 }
             },
             else => {
