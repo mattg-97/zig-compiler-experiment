@@ -9,6 +9,7 @@ const Lexer = @import("../../frontend/lexer.zig");
 const Parser = @import("../../frontend/parser/parser.zig");
 const AST = @import("../../frontend/parser/ast.zig");
 const Environment = @import("../environment/environment.zig");
+const BuiltinFunction = @import("./builtins.zig").BuiltinFn;
 pub const EvaluatorError = error{
     MemoryAllocation,
     UnsupportedObject,
@@ -130,7 +131,56 @@ pub const Evaluator = struct {
                 return try self.applyFunction(function, args);
             },
             .String => |s| return Objects.String.new(self.alloc, s.value),
+            .Array => |array| {
+                var elems = std.ArrayList(*Object).init(self.alloc);
+                for (array.elements.items) |elem| {
+                    const evaluatedElem = try self.evaluateExpression(&elem, env);
+                    switch (evaluatedElem.*) {
+                        .err => return evaluatedElem,
+                        else => {},
+                    }
+                    elems.append(evaluatedElem) catch return EvaluatorError.MemoryAllocation;
+                }
+                return try Objects.Array.new(self.alloc, elems);
+            },
+            .Index => |idx| {
+                const left = try self.evaluateExpression(idx.left, env);
+                switch (left.*) {
+                    .err => return left,
+                    else => {},
+                }
+                const index = try self.evaluateExpression(idx.index, env);
+                switch (index.*) {
+                    .err => return left,
+                    else => {},
+                }
+                return try self.evaluateIndexExpression(left, index);
+            },
+            //else => return try Objects.Error.new(self.alloc, "unable to evalue expression", .{}),
         }
+    }
+
+    fn evaluateIndexExpression(self: *Self, left: *Object, index: *Object) EvaluatorError!*Object {
+        switch (left.*) {
+            .array => |arr| {
+                switch (index.*) {
+                    .integer => |int| {
+                        return try self.evaluateArrayIndexExpression(&arr, &int);
+                    },
+                    else => return try Objects.Error.new(self.alloc, "index operator not supported: {s}", .{index.typeName()}),
+                }
+            },
+            else => return try Objects.Error.new(self.alloc, "index operator not supported: {s}", .{left.typeName()}),
+        }
+    }
+
+    fn evaluateArrayIndexExpression(self: *Self, array: *const Objects.Array, index: *const Objects.Integer) EvaluatorError!*Object {
+        const max = array.elements.items.len;
+        if (index.value < 0 or index.value >= max) {
+            return try Objects.Null.new(self.alloc);
+        }
+        const idx: usize = @intCast(index.value);
+        return array.elements.items[idx];
     }
 
     fn evaluateBangOperatorExpression(self: *Evaluator, right: *Object, _: *Environment) EvaluatorError!*Object {
@@ -252,6 +302,9 @@ pub const Evaluator = struct {
                 const evaluated = try self.evaluateBlockStatement(func.body, extendedEnv);
                 return unwrapReturnObject(evaluated);
             },
+            .builtin => |builtin| {
+                return try builtin.call(self.alloc, args);
+            },
             else => return Objects.Error.new(self.alloc, "not a function: {s}", .{function.typeName()}),
         }
     }
@@ -278,9 +331,12 @@ pub const Evaluator = struct {
         const val = env.get(ident.value);
         if (val) |value| {
             return value;
-        } else {
-            return try Objects.Error.new(self.alloc, "object doesnt exist in the hash store.", .{});
         }
+
+        if (std.mem.eql(u8, "len", ident.value)) {
+            return try Objects.BuiltIn.new(self.alloc, BuiltinFunction.len);
+        }
+        return try Objects.Error.new(self.alloc, "object doesnt exist in the hash store.", .{});
     }
 
     fn evaluateBlockStatement(self: *Evaluator, block: *AST.BlockStatement, env: *Environment) EvaluatorError!*Object {

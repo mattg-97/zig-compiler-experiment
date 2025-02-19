@@ -92,6 +92,8 @@ pub fn nextToken(self: *Lexer) token {
             tok.Type = tokenType.STRING;
             tok.Literal = self.readString();
         },
+        '[' => tok = token.newToken(tokenType.LBRACKET, null, self.line),
+        ']' => tok = token.newToken(tokenType.RBRACKET, null, self.line),
         '\x00' => tok = token.newToken(tokenType.EOF, null, self.line),
         else => {
             if (isLetter(self.ch)) {

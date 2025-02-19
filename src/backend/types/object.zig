@@ -3,6 +3,7 @@ const std = @import("std");
 const AST = @import("../../frontend/parser/ast.zig");
 const Envrionment = @import("../environment/environment.zig");
 const EvaluatorError = @import("../evaluator/evaluator.zig").EvaluatorError;
+const BuiltinFunction = @import("../evaluator/builtins.zig").BuiltinFn;
 
 pub fn compareObjects(obj1: *Object, obj2: *Object) bool {
     switch (obj1.*) {
@@ -37,6 +38,8 @@ pub const Object = union(enum) {
     returnObject: Return,
     err: Error,
     string: String,
+    builtin: BuiltIn,
+    array: Array,
     const Self = @This();
     pub fn typeName(self: Self) []const u8 {
         switch (self) {
@@ -214,5 +217,54 @@ pub const String = struct {
     }
     pub fn toString(self: Self) void {
         std.debug.print("{s}\n", .{self.value});
+    }
+};
+
+pub const BuiltIn = struct {
+    function: BuiltinFunction,
+
+    const Self = @This();
+
+    pub fn new(alloc: std.mem.Allocator, func: BuiltinFunction) EvaluatorError!*Object {
+        const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
+        ptr.* = .{
+            .builtin = .{
+                .function = func,
+            },
+        };
+        return ptr;
+    }
+
+    pub fn typeName(_: Self) []const u8 {
+        return "builtin";
+    }
+    pub fn toString(_: Self) void {
+        // TODO print builtins
+        std.debug.print("TODO \n", .{});
+    }
+
+    pub fn call(self: *const BuiltIn, alloc: std.mem.Allocator, args: std.ArrayList(*Object)) !*Object {
+        return try self.function.call(alloc, args);
+    }
+};
+
+pub const Array = struct {
+    elements: std.ArrayList(*Object),
+    const Self = @This();
+    pub fn new(alloc: std.mem.Allocator, elems: std.ArrayList(*Object)) EvaluatorError!*Object {
+        const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
+        ptr.* = .{
+            .array = .{
+                .elements = elems,
+            },
+        };
+        return ptr;
+    }
+    pub fn typeName(_: Self) []const u8 {
+        return "builtin";
+    }
+    pub fn toString(_: Self) void {
+        // TODO print builtins
+        std.debug.print("TODO \n", .{});
     }
 };

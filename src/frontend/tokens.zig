@@ -33,6 +33,8 @@ pub const TokenType = enum {
     ERROR,
     PRINT,
     STRING,
+    LBRACKET,
+    RBRACKET,
     pub fn toTokenLiteral(self: TokenType) []const u8 {
         const tokenStr = switch (self) {
             TokenType.EOF => "\x00",
@@ -64,6 +66,8 @@ pub const TokenType = enum {
             TokenType.ERROR => "ERROR",
             TokenType.PRINT => "PRINT",
             TokenType.STRING => "STRING",
+            TokenType.LBRACKET => "LBRACKET",
+            TokenType.RBRACKET => "RBRACKET",
             else => "ILLEGAL",
         };
         return tokenStr;

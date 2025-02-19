@@ -31,7 +31,7 @@ const Priority = enum(u4) {
             .SLASH => .PRODUCT,
             .ASTERISK => .PRODUCT,
             .LPAREN => .CALL,
-            .LBRACE => .INDEX,
+            .LBRACKET => .INDEX,
             else => .LOWEST,
         };
     }
@@ -45,6 +45,7 @@ pub const ParserError = error{
     InvalidInfix,
     ExpectPeek,
     ExpectString,
+    ExpectArray,
     InvalidHashLiteral,
     InvalidStringLiteral,
     InvalidFunctionParam,
@@ -186,6 +187,7 @@ pub const Parser = struct {
             TokenType.LPAREN => try self.parseGroupedExpression(),
             TokenType.FUNCTION => AST.Expression{ .Function = try self.parseFunctionLiteral() },
             TokenType.STRING => AST.Expression{ .String = try self.parseStringLiteral() },
+            TokenType.LBRACKET => AST.Expression{ .Array = try self.parseArrayLiteral() },
             else => ParserError.InvalidPrefix,
         };
     }
@@ -195,6 +197,7 @@ pub const Parser = struct {
         return switch (token) {
             .PLUS, .ASTERISK, .SLASH, .GT, .LT, .EQ, .NOT_EQ, .MINUS, .ASSIGN => AST.Expression{ .Infix = try self.parseInfix(left) },
             .LPAREN => AST.Expression{ .Call = try self.parseCallExpression(left) },
+            .LBRACKET => AST.Expression{ .Index = try self.parseIndexExpression(left) },
             else => ParserError.InvalidInfix,
         };
     }
@@ -308,7 +311,7 @@ pub const Parser = struct {
 
     fn parseExpressions(self: *Parser, closeToken: TokenType) ParserError!std.ArrayList(AST.Expression) {
         var exprList = std.ArrayList(AST.Expression).init(self.alloc);
-        if (self.peek_token.Type == closeToken) {
+        if (self.peekTokenIs(closeToken)) {
             self.nextToken();
             return exprList;
         }
@@ -327,6 +330,27 @@ pub const Parser = struct {
     fn parseStringLiteral(self: *Parser) ParserError!AST.StringLiteral {
         if (!self.currentTokenIs(.STRING)) return ParserError.ExpectString;
         return AST.StringLiteral{ .token = self.current_token, .value = self.current_token.Literal };
+    }
+
+    fn parseArrayLiteral(self: *Self) ParserError!AST.ArrayLiteral {
+        if (!self.currentTokenIs(.LBRACKET)) return ParserError.ExpectArray;
+        return AST.ArrayLiteral{ .token = self.current_token, .elements = try self.parseExpressions(TokenType.RBRACKET) };
+    }
+
+    fn parseIndexExpression(self: *Self, left: *AST.Expression) ParserError!AST.IndexExpression {
+        if (!self.currentTokenIs(.LBRACKET)) return ParserError.ExpectArray;
+        const indexToken = self.current_token;
+        self.nextToken();
+        const index = try self.parseExpression(.LOWEST);
+        const indexPtr = self.alloc.create(AST.Expression) catch return ParserError.MemoryAllocation;
+        indexPtr.* = index;
+
+        try self.expectPeek(.RBRACKET);
+        return .{
+            .index = indexPtr,
+            .left = left,
+            .token = indexToken,
+        };
     }
 
     fn peekError(self: *Parser, t: TokenType) !void {
