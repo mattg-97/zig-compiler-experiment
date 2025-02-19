@@ -188,6 +188,7 @@ pub const Parser = struct {
             TokenType.FUNCTION => AST.Expression{ .Function = try self.parseFunctionLiteral() },
             TokenType.STRING => AST.Expression{ .String = try self.parseStringLiteral() },
             TokenType.LBRACKET => AST.Expression{ .Array = try self.parseArrayLiteral() },
+            TokenType.LBRACE => AST.Expression{ .Hash = try self.parseHashLiteral() },
             else => ParserError.InvalidPrefix,
         };
     }
@@ -351,6 +352,23 @@ pub const Parser = struct {
             .left = left,
             .token = indexToken,
         };
+    }
+
+    fn parseHashLiteral(self: *Self) ParserError!AST.HashLiteral {
+        var hash = AST.HashLiteral{ .token = self.current_token, .pairs = std.ArrayList(AST.HashPair).init(self.alloc) };
+        while (!self.peekTokenIs(.RBRACE)) {
+            self.nextToken();
+            const key = try self.parseExpression(.LOWEST);
+            try self.expectPeek(.COLON);
+            self.nextToken();
+            const value = try self.parseExpression(.LOWEST);
+            hash.pairs.append(AST.HashPair{ .token = self.current_token, .key = key, .value = value }) catch return ParserError.InvalidHashLiteral;
+            if (!self.peekTokenIs(.RBRACE)) {
+                self.expectPeek(.COMMA) catch return ParserError.InvalidHashLiteral;
+            }
+        }
+        try self.expectPeek(.RBRACE);
+        return hash;
     }
 
     fn peekError(self: *Parser, t: TokenType) !void {

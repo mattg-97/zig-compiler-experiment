@@ -38,19 +38,19 @@ pub const Evaluator = struct {
             const evaluation = self.evaluateStatement(@constCast(&stmt), env) catch return EvaluatorError.UnsupportedObject;
             switch (evaluation.*) {
                 .returnObject => |ret| {
-                    ret.toString();
+                    //ret.toString();
                     return ret.value;
                 },
                 .err => {
-                    evaluation.toString();
+                    //evaluation.toString();
                     return evaluation;
                 },
                 else => val = evaluation,
             }
         }
-        val.toString();
         return val;
     }
+    //let map = fn(arr, f) { let iter = fn(arr, accumulated) { if (len(arr) == 0) { accumulated } else { iter(tail(arr), push(accumulated, f(first(arr))));}};iter(arr, []);};
 
     fn evaluateStatement(self: *Self, statement: *AST.Statement, env: *Environment) EvaluatorError!*Object {
         switch (statement.*) {
@@ -156,7 +156,7 @@ pub const Evaluator = struct {
                 }
                 return try self.evaluateIndexExpression(left, index);
             },
-            //else => return try Objects.Error.new(self.alloc, "unable to evalue expression", .{}),
+            else => return try Objects.Error.new(self.alloc, "unable to evaluate expression", .{}),
         }
     }
 
@@ -341,6 +341,15 @@ pub const Evaluator = struct {
         }
         if (std.mem.eql(u8, "last", ident.value)) {
             return try Objects.BuiltIn.new(self.alloc, BuiltinFunction.last);
+        }
+        if (std.mem.eql(u8, "tail", ident.value)) {
+            return try Objects.BuiltIn.new(self.alloc, BuiltinFunction.tail);
+        }
+        if (std.mem.eql(u8, "push", ident.value)) {
+            return try Objects.BuiltIn.new(self.alloc, BuiltinFunction.push);
+        }
+        if (std.mem.eql(u8, "puts", ident.value)) {
+            return try Objects.BuiltIn.new(self.alloc, BuiltinFunction.puts);
         }
         return try Objects.Error.new(self.alloc, "object doesnt exist in the hash store.", .{});
     }

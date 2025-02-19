@@ -17,6 +17,7 @@ pub const TokenType = enum {
     GT,
     COMMA,
     SEMICOLON,
+    COLON,
     LPAREN,
     RPAREN,
     LBRACE,
@@ -68,6 +69,7 @@ pub const TokenType = enum {
             TokenType.STRING => "STRING",
             TokenType.LBRACKET => "LBRACKET",
             TokenType.RBRACKET => "RBRACKET",
+            TokenType.COLON => "COLON",
             else => "ILLEGAL",
         };
         return tokenStr;

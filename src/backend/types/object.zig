@@ -263,8 +263,9 @@ pub const Array = struct {
     pub fn typeName(_: Self) []const u8 {
         return "builtin";
     }
-    pub fn toString(_: Self) void {
-        // TODO print builtins
-        std.debug.print("TODO \n", .{});
+    pub fn toString(self: Self) void {
+        for (self.elements.items) |item| {
+            item.toString();
+        }
     }
 };

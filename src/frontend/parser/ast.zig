@@ -68,6 +68,7 @@ pub const Expression = union(enum) {
     String: StringLiteral,
     Array: ArrayLiteral,
     Index: IndexExpression,
+    Hash: HashLiteral,
     pub fn tokenLiteral(self: Expression) []const u8 {
         return switch (self) {
             inline else => |case| case.tokenLiteral(),
@@ -389,11 +390,36 @@ pub const IndexExpression = struct {
     token: Token,
     left: *Expression,
     index: *Expression,
-    pub fn tokenLiteral(self: InfixExpression) []const u8 {
+    pub fn tokenLiteral(self: IndexExpression) []const u8 {
         return self.token.Literal;
     }
 
     pub fn print(self: IndexExpression) void {
+        std.debug.print("{s}", .{self.token.Literal});
+    }
+};
+
+pub const HashLiteral = struct {
+    token: Token,
+    pairs: std.ArrayList(HashPair),
+    pub fn tokenLiteral(self: HashLiteral) []const u8 {
+        return self.token.Literal;
+    }
+
+    pub fn print(self: HashLiteral) void {
+        std.debug.print("{s}", .{self.token.Literal});
+    }
+};
+
+pub const HashPair = struct {
+    token: Token,
+    key: Expression,
+    value: Expression,
+    pub fn tokenLiteral(self: HashPair) []const u8 {
+        return self.token.Literal;
+    }
+
+    pub fn print(self: HashPair) void {
         std.debug.print("{s}", .{self.token.Literal});
     }
 };
