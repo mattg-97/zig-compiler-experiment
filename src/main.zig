@@ -1,12 +1,9 @@
 const std = @import("std");
-const check = std.heap.Check;
-const string = @import("string").String;
 
 const Environment = @import("./backend/environment/environment.zig");
 const Evaluator = @import("./backend/evaluator/evaluator.zig").Evaluator;
 const Lexer = @import("./frontend/lexer.zig");
 const Parser = @import("./frontend/parser/parser.zig").Parser;
-//const repl = @import("frontend/repl.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
