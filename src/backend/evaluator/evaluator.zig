@@ -129,6 +129,7 @@ pub const Evaluator = struct {
                 }
                 return try self.applyFunction(function, args);
             },
+            .String => |s| return Objects.String.new(self.alloc, s.value),
         }
     }
 

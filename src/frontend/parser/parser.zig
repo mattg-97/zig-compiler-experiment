@@ -44,6 +44,7 @@ pub const ParserError = error{
     InvalidPrefix,
     InvalidInfix,
     ExpectPeek,
+    ExpectString,
     InvalidHashLiteral,
     InvalidStringLiteral,
     InvalidFunctionParam,
@@ -184,6 +185,7 @@ pub const Parser = struct {
             TokenType.IF => AST.Expression{ .If = try self.parseIfExpression() },
             TokenType.LPAREN => try self.parseGroupedExpression(),
             TokenType.FUNCTION => AST.Expression{ .Function = try self.parseFunctionLiteral() },
+            TokenType.STRING => AST.Expression{ .String = try self.parseStringLiteral() },
             else => ParserError.InvalidPrefix,
         };
     }
@@ -321,6 +323,10 @@ pub const Parser = struct {
         }
         try self.expectPeek(closeToken);
         return exprList;
+    }
+    fn parseStringLiteral(self: *Parser) ParserError!AST.StringLiteral {
+        if (!self.currentTokenIs(.STRING)) return ParserError.ExpectString;
+        return AST.StringLiteral{ .token = self.current_token, .value = self.current_token.Literal };
     }
 
     fn peekError(self: *Parser, t: TokenType) !void {

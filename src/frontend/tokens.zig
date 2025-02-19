@@ -32,6 +32,7 @@ pub const TokenType = enum {
     NOT_EQ,
     ERROR,
     PRINT,
+    STRING,
     pub fn toTokenLiteral(self: TokenType) []const u8 {
         const tokenStr = switch (self) {
             TokenType.EOF => "\x00",
@@ -62,6 +63,7 @@ pub const TokenType = enum {
             TokenType.NOT_EQ => "!=",
             TokenType.ERROR => "ERROR",
             TokenType.PRINT => "PRINT",
+            TokenType.STRING => "STRING",
             else => "ILLEGAL",
         };
         return tokenStr;

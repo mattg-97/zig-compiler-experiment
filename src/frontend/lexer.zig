@@ -88,6 +88,10 @@ pub fn nextToken(self: *Lexer) token {
         '*' => tok = token.newToken(tokenType.ASTERISK, null, self.line),
         '>' => tok = token.newToken(tokenType.GT, null, self.line),
         '<' => tok = token.newToken(tokenType.LT, null, self.line),
+        '"' => {
+            tok.Type = tokenType.STRING;
+            tok.Literal = self.readString();
+        },
         '\x00' => tok = token.newToken(tokenType.EOF, null, self.line),
         else => {
             if (isLetter(self.ch)) {
@@ -120,6 +124,15 @@ fn readChar(self: *Lexer) void {
     }
     self.position = self.readPosition;
     self.readPosition += 1;
+}
+
+fn readString(self: *Lexer) []const u8 {
+    const position = self.position + 1;
+    while (true) {
+        self.readChar();
+        if (self.ch == '"' or self.ch == 0) break;
+    }
+    return self.input[position..self.position];
 }
 
 fn readNumber(self: *Lexer) []const u8 {

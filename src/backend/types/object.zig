@@ -36,6 +36,7 @@ pub const Object = union(enum) {
     function: Function,
     returnObject: Return,
     err: Error,
+    string: String,
     const Self = @This();
     pub fn typeName(self: Self) []const u8 {
         switch (self) {
@@ -192,5 +193,26 @@ pub const Function = struct {
             body.print();
             std.debug.print("\n", .{});
         }
+    }
+};
+
+pub const String = struct {
+    value: []const u8,
+    const Self = @This();
+
+    pub fn new(alloc: std.mem.Allocator, string: []const u8) !*Object {
+        const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
+        ptr.* = .{
+            .string = .{
+                .value = string,
+            },
+        };
+        return ptr;
+    }
+    pub fn typeName(_: Self) []const u8 {
+        return "string";
+    }
+    pub fn toString(self: Self) void {
+        std.debug.print("{s}\n", .{self.value});
     }
 };
