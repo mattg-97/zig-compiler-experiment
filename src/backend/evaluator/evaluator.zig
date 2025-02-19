@@ -178,7 +178,9 @@ pub const Evaluator = struct {
         switch (left.*) {
             .integer => |leftInt| {
                 switch (right.*) {
-                    .integer => |rightInt| return try self.evaluateIntegerInfixExpression(operator, @constCast(&leftInt), @constCast(&rightInt)),
+                    .integer => |rightInt| {
+                        return try self.evaluateIntegerInfixExpression(operator, @constCast(&leftInt), @constCast(&rightInt));
+                    },
                     else => return Objects.Error.new(self.alloc, "type mismatch: {s} {s} {s}", .{ leftInt.typeName(), operator.toString(), right.typeName() }),
                 }
             },
