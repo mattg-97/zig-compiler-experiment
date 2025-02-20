@@ -11,34 +11,38 @@ const Op = u8;
 const OpCode = enum(Op) {
     OpConstant,
     pub fn toDefinition(self: OpCode) Definition {
-        const defintion = switch (self) {
+        var definition: Definition = undefined;
+        switch (self) {
             .OpConstant => {
-                var buf = [_]u16{2};
-                const widths = buf[0..1];
-                .{ .name = "OpConstant", .operandWidths = widths };
+                const buf = &[_]usize{2};
+                definition = .{ .name = "OpConstant", .operandWidths = buf[0..] };
             },
-        };
-        return defintion;
+        }
+        return definition;
     }
 };
 
 const Definition = struct {
     name: []const u8,
-    operandWidths: []u16,
+    operandWidths: []const usize,
 };
 
 pub fn Make(op: OpCode, operands: []const u16) []u8 {
     const def = op.toDefinition();
-    const instructionLen = def.operandWidths.len;
+    var instructionLen: usize = 1;
+    for (def.operandWidths) |w| {
+        instructionLen += w;
+    }
     var tempArr = [_]u8{0} ** std.math.maxInt(u8);
-    var instruction = tempArr[0..instructionLen];
+    var instruction: []u8 = tempArr[0..instructionLen];
     instruction[0] = @intFromEnum(op);
     var offset: usize = 1;
     for (operands, 0..) |operand, i| {
         const width = def.operandWidths[i];
         switch (width) {
             2 => {
-                bits.PutUint16(&instruction[offset..], @as(u16, operand));
+                instruction[offset] = @as(u8, @truncate(operand >> 8));
+                instruction[offset + 1] = @as(u8, @truncate(operand));
             },
             else => {},
         }
