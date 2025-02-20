@@ -10,6 +10,7 @@ const Parser = @import("../../frontend/parser/parser.zig");
 const AST = @import("../../frontend/parser/ast.zig");
 const Environment = @import("../environment/environment.zig");
 const BuiltinFunction = @import("./builtins.zig").BuiltinFn;
+const GC = @import("../gc/gc.zig");
 pub const EvaluatorError = error{
     MemoryAllocation,
     UnsupportedObject,
@@ -17,10 +18,14 @@ pub const EvaluatorError = error{
 
 pub const Evaluator = struct {
     alloc: std.mem.Allocator,
+    gc: GC,
+    gcCounter: u64,
     const Self = @This();
     pub fn init(alloc: std.mem.Allocator) Self {
         return .{
             .alloc = alloc,
+            .gc = GC.init(alloc),
+            .gcCounter = 0,
         };
     }
 
@@ -36,9 +41,17 @@ pub const Evaluator = struct {
         var val: *Object = undefined;
         for (program.statements.items) |stmt| {
             const evaluation = self.evaluateStatement(@constCast(&stmt), env) catch return EvaluatorError.UnsupportedObject;
-            switch (evaluation.*) {
+            self.gc.markObject(evaluation);
+            self.gcCounter += 1;
+            if (self.gcCounter == 5) {
+                self.gc.markEnvironment(env);
+                self.gc.sweep();
+                self.gcCounter = 0;
+            }
+            switch (evaluation.*.data) {
                 .returnObject => |ret| {
                     //ret.toString();
+                    self.gc.markObject(ret.value);
                     return ret.value;
                 },
                 .err => {
@@ -58,21 +71,17 @@ pub const Evaluator = struct {
             .Block => |*block| return self.evaluateBlockStatement(block, env),
             .Return => |ret| {
                 const val = try self.evaluateExpression(ret.returnValue, env);
-                switch (val.*) {
+                switch (val.*.data) {
                     .err => return val,
                     else => {},
                 }
 
-                const objPtr = self.alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
-                objPtr.* = Object{ .returnObject = Objects.Return{
-                    .value = val,
-                } };
-
+                const objPtr = try Objects.Return.new(self.alloc, val);
                 return objPtr;
             },
             .Let => |stmt| {
                 const val = try self.evaluateExpression(stmt.value, env);
-                switch (val.*) {
+                switch (val.*.data) {
                     .err => return val,
                     else => {},
                 }
@@ -86,11 +95,15 @@ pub const Evaluator = struct {
 
     fn evaluateExpression(self: *Evaluator, expression: *const AST.Expression, env: *Environment) EvaluatorError!*Object {
         switch (expression.*) {
-            .Integer => |int| return try Objects.Integer.new(self.alloc, int.value),
+            .Integer => |int| {
+                const intObj = try Objects.Integer.new(self.alloc, int.value);
+                self.gc.add(intObj);
+                return intObj;
+            },
             .Bool => |expr| return try Objects.Boolean.new(self.alloc, expr.value),
             .Prefix => |expr| {
                 const right = try self.evaluateExpression(expr.right, env);
-                switch (right.*) {
+                switch (right.*.data) {
                     .err => return right,
                     else => {},
                 }
@@ -98,12 +111,12 @@ pub const Evaluator = struct {
             },
             .Infix => |expr| {
                 const left = try self.evaluateExpression(expr.left, env);
-                switch (left.*) {
+                switch (left.*.data) {
                     .err => return left,
                     else => {},
                 }
                 const right = try self.evaluateExpression(expr.right, env);
-                switch (right.*) {
+                switch (right.*.data) {
                     .err => return right,
                     else => {},
                 }
@@ -111,10 +124,14 @@ pub const Evaluator = struct {
             },
             .If => |stmt| return self.evaluateIfExpression(@constCast(&stmt), env),
             .Ident => |ident| return self.evaluateIdentifier(@constCast(&ident), env),
-            .Function => |func| return try Objects.Function.new(self.alloc, func.parameters, func.body, env),
+            .Function => |func| {
+                const function = try Objects.Function.new(self.alloc, func.parameters, func.body, env);
+                self.gc.add(function);
+                return function;
+            },
             .Call => |call| {
                 const function = try self.evaluateExpression(call.function, env);
-                switch (function.*) {
+                switch (function.*.data) {
                     .err => return function,
                     else => {},
                 }
@@ -122,7 +139,7 @@ pub const Evaluator = struct {
                 var args = std.ArrayList(*Object).init(self.alloc);
                 for (call.args.items) |arg| {
                     const evaledArg = try self.evaluateExpression(&arg, env);
-                    switch (evaledArg.*) {
+                    switch (evaledArg.*.data) {
                         .err => return evaledArg,
                         else => {},
                     }
@@ -130,12 +147,16 @@ pub const Evaluator = struct {
                 }
                 return try self.applyFunction(function, args);
             },
-            .String => |s| return Objects.String.new(self.alloc, s.value),
+            .String => |s| {
+                const string = try Objects.String.new(self.alloc, s.value);
+                self.gc.add(string);
+                return string;
+            },
             .Array => |array| {
                 var elems = std.ArrayList(*Object).init(self.alloc);
                 for (array.elements.items) |elem| {
                     const evaluatedElem = try self.evaluateExpression(&elem, env);
-                    switch (evaluatedElem.*) {
+                    switch (evaluatedElem.*.data) {
                         .err => return evaluatedElem,
                         else => {},
                     }
@@ -145,12 +166,12 @@ pub const Evaluator = struct {
             },
             .Index => |idx| {
                 const left = try self.evaluateExpression(idx.left, env);
-                switch (left.*) {
+                switch (left.*.data) {
                     .err => return left,
                     else => {},
                 }
                 const index = try self.evaluateExpression(idx.index, env);
-                switch (index.*) {
+                switch (index.*.data) {
                     .err => return left,
                     else => {},
                 }
@@ -161,9 +182,9 @@ pub const Evaluator = struct {
     }
 
     fn evaluateIndexExpression(self: *Self, left: *Object, index: *Object) EvaluatorError!*Object {
-        switch (left.*) {
+        switch (left.*.data) {
             .array => |arr| {
-                switch (index.*) {
+                switch (index.*.data) {
                     .integer => |int| {
                         return try self.evaluateArrayIndexExpression(&arr, &int);
                     },
@@ -184,7 +205,7 @@ pub const Evaluator = struct {
     }
 
     fn evaluateBangOperatorExpression(self: *Evaluator, right: *Object, _: *Environment) EvaluatorError!*Object {
-        switch (right.*) {
+        switch (right.*.data) {
             .boolean => |boolean| {
                 if (boolean.value) {
                     return try Objects.Boolean.new(self.alloc, false);
@@ -197,7 +218,7 @@ pub const Evaluator = struct {
         }
     }
     fn evaluateMinusPrefixOperatorExpression(self: *Evaluator, right: *Object, _: *Environment) EvaluatorError!*Object {
-        switch (right.*) {
+        switch (right.*.data) {
             .integer => |integer| return try Objects.Integer.new(self.alloc, -integer.value),
             else => return try Objects.Error.new(self.alloc, "unable to evalue minus prefix operator", .{}),
         }
@@ -213,31 +234,37 @@ pub const Evaluator = struct {
     fn evaluateStringInfixExpression(self: *Self, operator: AST.InfixOperator, left: *const Objects.String, right: *const Objects.String) EvaluatorError!*Object {
         const leftVal = left.*.value;
         const rightVal = right.*.value;
+        var result: *Object = undefined;
         switch (operator) {
-            .PLUS => return Objects.String.new(self.alloc, std.fmt.allocPrint(self.alloc, "{s}{s}", .{ leftVal, rightVal }) catch return EvaluatorError.MemoryAllocation),
-            else => return Objects.Error.new(self.alloc, "You can only use the '+' operator on strings.", .{}),
+            .PLUS => result = try Objects.String.new(self.alloc, std.fmt.allocPrint(self.alloc, "{s}{s}", .{ leftVal, rightVal }) catch return EvaluatorError.MemoryAllocation),
+            else => result = try Objects.Error.new(self.alloc, "You can only use the '+' operator on strings.", .{}),
         }
+        self.gc.add(result);
+        return result;
     }
 
     fn evaluateIntegerInfixExpression(self: *Evaluator, operator: AST.InfixOperator, left: *Objects.Integer, right: *Objects.Integer) EvaluatorError!*Object {
         const leftVal = left.*.value;
         const rightVal = right.*.value;
+        var result: *Object = undefined;
         switch (operator) {
-            .PLUS => return Objects.Integer.new(self.alloc, leftVal + rightVal),
-            .MINUS => return Objects.Integer.new(self.alloc, leftVal - rightVal),
-            .MULTIPLY => return Objects.Integer.new(self.alloc, leftVal * rightVal),
-            .DIVIDE => return Objects.Integer.new(self.alloc, @divExact(leftVal, rightVal)),
-            .LESS_THAN => return Objects.Boolean.new(self.alloc, leftVal < rightVal),
-            .GREATER_THAN => return Objects.Boolean.new(self.alloc, leftVal > rightVal),
-            .EQUAL => return Objects.Boolean.new(self.alloc, leftVal == rightVal),
-            .NOT_EQUAL => return Objects.Boolean.new(self.alloc, leftVal != rightVal),
+            .PLUS => result = try Objects.Integer.new(self.alloc, leftVal + rightVal),
+            .MINUS => result = try Objects.Integer.new(self.alloc, leftVal - rightVal),
+            .MULTIPLY => result = try Objects.Integer.new(self.alloc, leftVal * rightVal),
+            .DIVIDE => result = try Objects.Integer.new(self.alloc, @divExact(leftVal, rightVal)),
+            .LESS_THAN => result = try Objects.Boolean.new(self.alloc, leftVal < rightVal),
+            .GREATER_THAN => result = try Objects.Boolean.new(self.alloc, leftVal > rightVal),
+            .EQUAL => result = try Objects.Boolean.new(self.alloc, leftVal == rightVal),
+            .NOT_EQUAL => result = try Objects.Boolean.new(self.alloc, leftVal != rightVal),
         }
+        self.gc.add(result);
+        return result;
     }
 
     fn evaluateInfixExpression(self: *Evaluator, operator: AST.InfixOperator, left: *Object, right: *Object, _: *Environment) EvaluatorError!*Object {
-        switch (left.*) {
+        switch (left.*.data) {
             .integer => |leftInt| {
-                switch (right.*) {
+                switch (right.*.data) {
                     .integer => |rightInt| {
                         return try self.evaluateIntegerInfixExpression(operator, @constCast(&leftInt), @constCast(&rightInt));
                     },
@@ -245,7 +272,7 @@ pub const Evaluator = struct {
                 }
             },
             .string => |leftStr| {
-                switch (right.*) {
+                switch (right.*.data) {
                     .string => |rightStr| {
                         return try self.evaluateStringInfixExpression(operator, &leftStr, &rightStr);
                     },
@@ -257,7 +284,7 @@ pub const Evaluator = struct {
                     .EQUAL => return Objects.Boolean.new(self.alloc, Objects.compareObjects(left, right)),
                     .NOT_EQUAL => return Objects.Boolean.new(self.alloc, !Objects.compareObjects(left, right)),
                     else => {
-                        if (std.mem.eql(u8, @tagName(left.*), @tagName(right.*))) {
+                        if (std.mem.eql(u8, @tagName(left.*.data), @tagName(right.*.data))) {
                             return Objects.Error.new(self.alloc, "unknown operator: {s} {s} {s}", .{ left.typeName(), operator.toString(), right.typeName() });
                         } else {
                             return Objects.Error.new(self.alloc, "type mismatch: {s} {s} {s}", .{ left.typeName(), operator.toString(), right.typeName() });
@@ -270,7 +297,7 @@ pub const Evaluator = struct {
 
     fn evaluateIfExpression(self: *Evaluator, expr: *AST.IfExpression, env: *Environment) EvaluatorError!*Object {
         const condition = try self.evaluateExpression(expr.condition, env);
-        switch (condition.*) {
+        switch (condition.*.data) {
             .err => return condition,
             else => {},
         }
@@ -285,7 +312,7 @@ pub const Evaluator = struct {
     }
 
     fn isTruthy(val: *Object) bool {
-        switch (val.*) {
+        switch (val.*.data) {
             .boolean => |boolean| return boolean.value,
             .nullObject => return false,
             else => return true,
@@ -293,7 +320,7 @@ pub const Evaluator = struct {
     }
 
     fn applyFunction(self: *Evaluator, function: *Object, args: std.ArrayList(*Object)) !*Object {
-        switch (function.*) {
+        switch (function.*.data) {
             .function => |func| {
                 if (func.params.items.len != args.items.len) {
                     return Objects.Error.new(self.alloc, "wrong number of arguments: want {any} got {any}", .{ func.params.items.len, args.items.len });
@@ -321,7 +348,7 @@ pub const Evaluator = struct {
     }
 
     fn unwrapReturnObject(obj: *Object) *Object {
-        switch (obj.*) {
+        switch (obj.*.data) {
             .returnObject => |ret| return ret.value,
             else => return obj,
         }
@@ -359,7 +386,7 @@ pub const Evaluator = struct {
         var i: usize = 0;
         while (i < block.statements.items.len) : (i += 1) {
             const evaluated = try self.evaluateStatement(&block.statements.items[i], env);
-            switch (evaluated.*) {
+            switch (evaluated.*.data) {
                 .returnObject => return evaluated,
                 .err => return evaluated,
                 else => result = evaluated,

@@ -3,6 +3,7 @@ const std = @import("std");
 const EvaluatorError = @import("./evaluator.zig").EvaluatorError;
 const Objects = @import("../types/object.zig");
 const Object = Objects.Object;
+const ObjectData = Objects.ObjectData;
 
 pub const BuiltinFn = enum {
     len,
@@ -27,7 +28,7 @@ fn len(alloc: std.mem.Allocator, args: std.ArrayList(*Object)) EvaluatorError!*O
     if (try expectArgslen(alloc, 1, args)) |err| {
         return err;
     }
-    switch (args.items[0].*) {
+    switch (args.items[0].*.data) {
         .string => |argString| {
             return Objects.Integer.new(alloc, @intCast(argString.value.len));
         },
@@ -44,7 +45,7 @@ fn first(alloc: std.mem.Allocator, args: std.ArrayList(*Object)) EvaluatorError!
     if (try expectArgslen(alloc, 1, args)) |err| {
         return err;
     }
-    switch (args.items[0].*) {
+    switch (args.items[0].*.data) {
         .array => |array| {
             if (array.elements.items.len == 0) {
                 return Objects.Null.new(alloc);
@@ -59,7 +60,7 @@ fn last(alloc: std.mem.Allocator, args: std.ArrayList(*Object)) EvaluatorError!*
     if (try expectArgslen(alloc, 1, args)) |err| {
         return err;
     }
-    switch (args.items[0].*) {
+    switch (args.items[0].*.data) {
         .array => |array| {
             if (array.elements.items.len == 0) {
                 return Objects.Null.new(alloc);
@@ -74,7 +75,7 @@ fn tail(alloc: std.mem.Allocator, args: std.ArrayList(*Object)) EvaluatorError!*
     if (try expectArgslen(alloc, 1, args)) |err| {
         return err;
     }
-    switch (args.items[0].*) {
+    switch (args.items[0].*.data) {
         .array => |array| {
             const length = array.elements.items.len;
             var tailArray = std.ArrayList(*Object).init(alloc);
@@ -94,7 +95,7 @@ fn push(alloc: std.mem.Allocator, args: std.ArrayList(*Object)) EvaluatorError!*
     if (try expectArgslen(alloc, 2, args)) |err| {
         return err;
     }
-    switch (args.items[0].*) {
+    switch (args.items[0].*.data) {
         .array => |array| {
             var pushedArray = array.elements.clone() catch return EvaluatorError.MemoryAllocation;
             pushedArray.append(args.items[1]) catch return EvaluatorError.MemoryAllocation;

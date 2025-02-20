@@ -6,49 +6,29 @@ const Objects = @import("../types/object.zig");
 const Environment = @import("../environment/environment.zig");
 const Object = Objects.Object;
 const EvaluationError = @import("../evaluator/evaluator.zig").EvaluatorError;
+const debugMemory = @import("../../utils/memory.zig").debugMemory;
 
 alloc: std.mem.Allocator,
-memory: std.SinglyLinkedList(*TrackedObject),
-
-const TrackedObject = struct {
-    mark: bool,
-    obj: *Object,
-};
+head: *Object,
+count: u64,
 
 pub fn init(alloc: std.mem.Allocator) GC {
     return .{
         .alloc = alloc,
-        .memory = std.SinglyLinkedList(*TrackedObject),
+        .head = Objects.String.new(alloc, "head") catch @panic("unable to create head node for GC"),
+        .count = 0,
     };
 }
 
-pub fn add(self: *GC, obj: *Object) EvaluationError!void {
-    const tracked = TrackedObject{
-        .mark = false,
-        .obj = obj,
-    };
-    const trackedPtr = self.alloc.create(TrackedObject) catch return EvaluationError.MemoryAllocation;
-    trackedPtr.* = tracked;
-    self.memory.prepend(trackedPtr) catch return EvaluationError.MemoryAllocation;
-}
-
-pub fn getTrackedObject(self: *GC, obj: *Object) ?*TrackedObject {
-    var head = self.memory.first;
-    while (head) |item| {
-        const headObj = head.?.data.*.obj;
-        if (Objects.compareObjects(obj.*, headObj.*)) {
-            return head.?.data;
-        }
-        head = item.*.next;
-    }
-    return null;
+pub fn add(self: *GC, obj: *Object) void {
+    obj.next = self.head.next;
+    self.head.next = obj;
 }
 
 pub fn markObject(self: *GC, obj: *Object) void {
-    const tracked = self.getTrackedObject(obj);
-    if (tracked == null) return;
-    tracked.?.mark = true;
-    switch (obj.*) {
+    if (obj.mark) return;
+    obj.*.mark = true;
+    switch (obj.*.data) {
         .array => |array| {
             for (array.elements.items) |arrObj| {
                 self.markObject(arrObj);
@@ -59,7 +39,7 @@ pub fn markObject(self: *GC, obj: *Object) void {
 }
 
 pub fn markEnvironment(self: *GC, env: *Environment) void {
-    const iter = env.store.iterator();
+    var iter = env.store.iterator();
     while (iter.next()) |entry| {
         const entryPtr = entry.value_ptr.*;
         self.markObject(entryPtr);
@@ -67,4 +47,24 @@ pub fn markEnvironment(self: *GC, env: *Environment) void {
     if (env.outer) |outer| {
         self.markEnvironment(outer);
     }
+}
+
+pub fn sweep(self: *GC) void {
+    var deallocCount: u64 = 0;
+    var node = self.head;
+    while (node.next) |nextNode| {
+        if (nextNode.mark) {
+            node.next = nextNode.next;
+            deallocCount += debugMemory(nextNode);
+            self.alloc.destroy(nextNode);
+        } else {
+            node = nextNode;
+        }
+    }
+    node = self.head;
+    while (node.next) |nextNode| {
+        nextNode.*.mark = false;
+        node = nextNode;
+    }
+    std.log.info("Garbage collector deallocated: {d} Bytes\n", .{deallocCount});
 }

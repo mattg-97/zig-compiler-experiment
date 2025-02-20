@@ -4,23 +4,24 @@ const AST = @import("../../frontend/parser/ast.zig");
 const Envrionment = @import("../environment/environment.zig");
 const EvaluatorError = @import("../evaluator/evaluator.zig").EvaluatorError;
 const BuiltinFunction = @import("../evaluator/builtins.zig").BuiltinFn;
+const debugMemory = @import("../../utils/memory.zig").debugMemory;
 
 pub fn compareObjects(obj1: *Object, obj2: *Object) bool {
-    switch (obj1.*) {
+    switch (obj1.*.data) {
         .nullObject => {
-            switch (obj2.*) {
+            switch (obj2.*.data) {
                 .nullObject => return true,
                 else => return false,
             }
         },
         .integer => |int1| {
-            switch (obj2.*) {
+            switch (obj2.*.data) {
                 .integer => |int2| return int1.value == int2.value,
                 else => return false,
             }
         },
         .boolean => |boolean1| {
-            switch (obj2.*) {
+            switch (obj2.*.data) {
                 .boolean => |boolean2| return boolean1.value == boolean2.value,
                 else => return false,
             }
@@ -30,20 +31,40 @@ pub fn compareObjects(obj1: *Object, obj2: *Object) bool {
     }
 }
 
-const TrackedObject = struct {
-    obj: *Object,
-    next: ?*Object,
-    mark: bool,
-};
-
-fn allocateObject(alloc: std.mem.Allocator, object: Object) EvaluatorError!*Object {
+fn allocateObject(alloc: std.mem.Allocator, object: ObjectData) EvaluatorError!*Object {
+    const tracedObj = Object{
+        .mark = false,
+        .next = null,
+        .data = object,
+    };
     const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
-    ptr.* = object;
+    ptr.* = tracedObj;
+    std.debug.print("Bytes Allocated: {d}\n", .{debugMemory(&tracedObj)});
     return ptr;
 }
 
-const Mark = bool;
-pub const Object = union(enum) {
+pub const Object = struct {
+    mark: bool,
+    next: ?*Object,
+    data: ObjectData,
+    pub fn destroy(self: *Object, alloc: std.mem.Allocator) void {
+        alloc.destroy(self.data);
+        alloc.destroy(self);
+    }
+    pub fn typeName(self: *Object) []const u8 {
+        return switch (self.*.data) {
+            inline else => |case| case.typeName(),
+        };
+    }
+
+    pub fn toString(self: *Object) void {
+        switch (self.*.data) {
+            inline else => |case| case.toString(),
+        }
+    }
+};
+
+pub const ObjectData = union(enum) {
     nullObject: Null,
     integer: Integer,
     boolean: Boolean,
@@ -59,7 +80,7 @@ pub const Object = union(enum) {
             inline else => |case| return case.typeName(),
         }
     }
-    pub fn toString(self: *Self) void {
+    pub fn toString(self: *const Self) void {
         switch (self.*) {
             inline else => |case| case.toString(),
         }
@@ -68,7 +89,7 @@ pub const Object = union(enum) {
 
 pub const Null = struct {
     pub fn new(alloc: std.mem.Allocator) EvaluatorError!*Object {
-        const obj = Object{
+        const obj = ObjectData{
             .nullObject = .{},
         };
         return allocateObject(alloc, obj) catch return EvaluatorError.MemoryAllocation;
@@ -87,7 +108,7 @@ pub const Integer = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, value: i64) EvaluatorError!*Object {
-        const obj = Object{
+        const obj = ObjectData{
             .integer = .{
                 .value = value,
             },
@@ -109,7 +130,7 @@ pub const Boolean = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, value: bool) !*Object {
-        const obj = Object{
+        const obj = ObjectData{
             .boolean = .{
                 .value = value,
             },
@@ -132,7 +153,7 @@ pub const Error = struct {
 
     pub fn new(alloc: std.mem.Allocator, comptime fmt: []const u8, args: anytype) EvaluatorError!*Object {
         const errMsg = std.fmt.allocPrint(alloc, fmt, args) catch return EvaluatorError.MemoryAllocation;
-        const obj = Object{
+        const obj = ObjectData{
             .err = .{
                 .message = errMsg,
             },
@@ -153,7 +174,7 @@ pub const Return = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, retVal: *Object) !*Object {
-        const obj = Object{
+        const obj = ObjectData{
             .returnObject = .{
                 .value = retVal,
             },
@@ -177,7 +198,7 @@ pub const Function = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, params: std.ArrayList(AST.Identifier), body: *AST.BlockStatement, env: *Envrionment) !*Object {
-        const obj = Object{
+        const obj = ObjectData{
             .function = .{
                 .params = params,
                 .body = body,
@@ -211,7 +232,7 @@ pub const String = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, string: []const u8) !*Object {
-        const obj = Object{
+        const obj = ObjectData{
             .string = .{
                 .value = string,
             },
@@ -232,7 +253,7 @@ pub const BuiltIn = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, func: BuiltinFunction) EvaluatorError!*Object {
-        const obj = Object{
+        const obj = ObjectData{
             .builtin = .{
                 .function = func,
             },
@@ -257,7 +278,7 @@ pub const Array = struct {
     elements: std.ArrayList(*Object),
     const Self = @This();
     pub fn new(alloc: std.mem.Allocator, elems: std.ArrayList(*Object)) EvaluatorError!*Object {
-        const obj = Object{
+        const obj = ObjectData{
             .array = .{
                 .elements = elems,
             },

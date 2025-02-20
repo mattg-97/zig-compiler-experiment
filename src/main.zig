@@ -6,12 +6,18 @@ const Lexer = @import("./frontend/lexer.zig");
 const Parser = @import("./frontend/parser/parser.zig").Parser;
 
 pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer {
+        _ = gpa.detectLeaks();
+        _ = gpa.deinit();
+    }
+    const objectAllocator = gpa.allocator();
+    var arena = std.heap.ArenaAllocator.init(objectAllocator);
     defer arena.deinit();
     const alloc = arena.allocator();
 
     var env = Environment.init(alloc);
-    var evaluator = Evaluator.init(alloc);
+    var evaluator = Evaluator.init(objectAllocator);
 
     try repl(alloc, &env, &evaluator);
 }
@@ -40,7 +46,7 @@ fn repl(alloc: std.mem.Allocator, env: *Environment, evaluator: *Evaluator) anye
                 try stdout.print("Evaluating error: {}\n", .{err});
                 continue;
             };
-            switch (object.*) {
+            switch (object.*.data) {
                 .err => |error_| {
                     try stdout.print("Error: {s}\n", .{error_.message});
                 },
