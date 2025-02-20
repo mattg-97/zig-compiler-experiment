@@ -30,6 +30,19 @@ pub fn compareObjects(obj1: *Object, obj2: *Object) bool {
     }
 }
 
+const TrackedObject = struct {
+    obj: *Object,
+    next: ?*Object,
+    mark: bool,
+};
+
+fn allocateObject(alloc: std.mem.Allocator, object: Object) EvaluatorError!*Object {
+    const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
+    ptr.* = object;
+    return ptr;
+}
+
+const Mark = bool;
 pub const Object = union(enum) {
     nullObject: Null,
     integer: Integer,
@@ -55,11 +68,10 @@ pub const Object = union(enum) {
 
 pub const Null = struct {
     pub fn new(alloc: std.mem.Allocator) EvaluatorError!*Object {
-        const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
-        ptr.* = .{
+        const obj = Object{
             .nullObject = .{},
         };
-        return ptr;
+        return allocateObject(alloc, obj) catch return EvaluatorError.MemoryAllocation;
     }
     pub fn typeName(_: Null) []const u8 {
         return "null";
@@ -75,13 +87,12 @@ pub const Integer = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, value: i64) EvaluatorError!*Object {
-        const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
-        ptr.* = .{
+        const obj = Object{
             .integer = .{
                 .value = value,
             },
         };
-        return ptr;
+        return allocateObject(alloc, obj) catch return EvaluatorError.MemoryAllocation;
     }
 
     pub fn typeName(_: Self) []const u8 {
@@ -98,13 +109,12 @@ pub const Boolean = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, value: bool) !*Object {
-        const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
-        ptr.* = .{
+        const obj = Object{
             .boolean = .{
                 .value = value,
             },
         };
-        return ptr;
+        return allocateObject(alloc, obj) catch return EvaluatorError.MemoryAllocation;
     }
     pub fn typeName(_: Self) []const u8 {
         return "boolean";
@@ -121,14 +131,13 @@ pub const Error = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, comptime fmt: []const u8, args: anytype) EvaluatorError!*Object {
-        const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
         const errMsg = std.fmt.allocPrint(alloc, fmt, args) catch return EvaluatorError.MemoryAllocation;
-        ptr.* = .{
+        const obj = Object{
             .err = .{
                 .message = errMsg,
             },
         };
-        return ptr;
+        return allocateObject(alloc, obj) catch return EvaluatorError.MemoryAllocation;
     }
     pub fn typeName(_: Self) []const u8 {
         return "error";
@@ -144,13 +153,12 @@ pub const Return = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, retVal: *Object) !*Object {
-        const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
-        ptr.* = .{
+        const obj = Object{
             .returnObject = .{
                 .value = retVal,
             },
         };
-        return ptr;
+        return allocateObject(alloc, obj) catch return EvaluatorError.MemoryAllocation;
     }
     pub fn typeName(_: Self) []const u8 {
         return "return";
@@ -169,15 +177,14 @@ pub const Function = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, params: std.ArrayList(AST.Identifier), body: *AST.BlockStatement, env: *Envrionment) !*Object {
-        const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
-        ptr.* = .{
+        const obj = Object{
             .function = .{
                 .params = params,
                 .body = body,
                 .env = env,
             },
         };
-        return ptr;
+        return allocateObject(alloc, obj) catch return EvaluatorError.MemoryAllocation;
     }
     pub fn typeName(_: Self) []const u8 {
         return "function";
@@ -204,13 +211,12 @@ pub const String = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, string: []const u8) !*Object {
-        const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
-        ptr.* = .{
+        const obj = Object{
             .string = .{
                 .value = string,
             },
         };
-        return ptr;
+        return allocateObject(alloc, obj) catch return EvaluatorError.MemoryAllocation;
     }
     pub fn typeName(_: Self) []const u8 {
         return "string";
@@ -226,13 +232,12 @@ pub const BuiltIn = struct {
     const Self = @This();
 
     pub fn new(alloc: std.mem.Allocator, func: BuiltinFunction) EvaluatorError!*Object {
-        const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
-        ptr.* = .{
+        const obj = Object{
             .builtin = .{
                 .function = func,
             },
         };
-        return ptr;
+        return allocateObject(alloc, obj) catch return EvaluatorError.MemoryAllocation;
     }
 
     pub fn typeName(_: Self) []const u8 {
@@ -252,13 +257,12 @@ pub const Array = struct {
     elements: std.ArrayList(*Object),
     const Self = @This();
     pub fn new(alloc: std.mem.Allocator, elems: std.ArrayList(*Object)) EvaluatorError!*Object {
-        const ptr = alloc.create(Object) catch return EvaluatorError.MemoryAllocation;
-        ptr.* = .{
+        const obj = Object{
             .array = .{
                 .elements = elems,
             },
         };
-        return ptr;
+        return allocateObject(alloc, obj) catch return EvaluatorError.MemoryAllocation;
     }
     pub fn typeName(_: Self) []const u8 {
         return "builtin";

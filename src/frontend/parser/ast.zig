@@ -412,14 +412,6 @@ pub const HashLiteral = struct {
 };
 
 pub const HashPair = struct {
-    token: Token,
     key: Expression,
     value: Expression,
-    pub fn tokenLiteral(self: HashPair) []const u8 {
-        return self.token.Literal;
-    }
-
-    pub fn print(self: HashPair) void {
-        std.debug.print("{s}", .{self.token.Literal});
-    }
 };
