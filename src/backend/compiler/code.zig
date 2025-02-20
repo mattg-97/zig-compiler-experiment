@@ -5,10 +5,10 @@ const testing = std.testing;
 
 const bits = @import("./bits.zig");
 
-const Instructions = []u8;
+pub const Instructions = []const u8;
 const Op = u8;
 
-const OpCode = enum(Op) {
+pub const OpCode = enum(Op) {
     OpConstant,
     pub fn toDefinition(self: OpCode) Definition {
         var definition: Definition = undefined;
