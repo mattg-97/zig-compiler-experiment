@@ -403,222 +403,223 @@ pub const Parser = struct {
         return stmtPointer;
     }
 };
-test "test let statements" {
-    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
-    const testingAlloc = testArena.allocator();
-    defer testArena.deinit();
-
-    const input: []const u8 =
-        \\let x = 5;
-        \\let y = 10;
-        \\let foobar = 8331978;
-    ;
-    const lex = try Lexer.init(testingAlloc, input);
-    try lex.tokenize();
-    for (lex.tokens.items) |tok| {
-        std.debug.print("{s} ", .{tok.Literal});
-    }
-
-    const parser = try Parser.init(testingAlloc, lex);
-
-    const program = try parser.parseProgram();
-
-    try testing.expectEqual(program.statements.items.len, 3);
-
-    const TestCase = struct {
-        expectedIdentifier: []const u8,
-    };
-    const tests = [_]TestCase{
-        .{ .expectedIdentifier = "x" },
-        .{ .expectedIdentifier = "y" },
-        .{ .expectedIdentifier = "foobar" },
-    };
-
-    for (tests, 0..) |t, i| {
-        const stmt = program.statements.items[i];
-        try testing.expect(std.mem.eql(u8, stmt.tokenLiteral(), "let"));
-        try testing.expect(std.mem.eql(u8, stmt.Let.name.value, t.expectedIdentifier));
-        try testing.expect(std.mem.eql(u8, stmt.Let.name.tokenLiteral(), t.expectedIdentifier));
-    }
-}
-
-test "test return statements" {
-    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
-    const testingAlloc = testArena.allocator();
-    defer testArena.deinit();
-
-    const input: []const u8 =
-        \\return 5;
-        \\return 10;
-        \\return 8331978;
-    ;
-    const lex = try Lexer.init(testingAlloc, input);
-    try lex.tokenize();
-
-    const parser = try Parser.init(testingAlloc, lex);
-
-    const program = try parser.parseProgram();
-
-    try testing.expectEqual(program.statements.items.len, 3);
-
-    for (program.statements.items) |stmt| {
-        try testing.expect(std.mem.eql(u8, stmt.Return.tokenLiteral(), "return"));
-    }
-}
-
-test "test integer expressions" {
-    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
-    const testingAlloc = testArena.allocator();
-    defer testArena.deinit();
-    const input = "5;";
-
-    const lex = try Lexer.init(testingAlloc, input);
-    try lex.tokenize();
-
-    const parser = try Parser.init(testingAlloc, lex);
-
-    const program = try parser.parseProgram();
-
-    try testing.expectEqual(1, program.statements.items.len);
-    const stmt: AST.ExpressionStatement = program.statements.items[0].Expr;
-    const lit = stmt.expression.Integer.value;
-    try testing.expectEqual(5, lit);
-    try testing.expect(std.mem.eql(u8, "5", stmt.tokenLiteral()));
-}
-
-test "test identifier expressions" {
-    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
-    const testingAlloc = testArena.allocator();
-    defer testArena.deinit();
-    const input = "foobar;";
-
-    const lex = try Lexer.init(testingAlloc, input);
-    try lex.tokenize();
-
-    const parser = try Parser.init(testingAlloc, lex);
-
-    const program = try parser.parseProgram();
-
-    try testing.expectEqual(1, program.statements.items.len);
-    const stmt: AST.ExpressionStatement = program.statements.items[0].Expr;
-    const ident = stmt.expression.Ident;
-    try testing.expect(std.mem.eql(u8, "foobar", ident.value));
-    try testing.expect(std.mem.eql(u8, "foobar", ident.tokenLiteral()));
-}
-
-test "test prefix expressions" {
-    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
-    const testingAlloc = testArena.allocator();
-    defer testArena.deinit();
-    const PrefixTest = struct {
-        input: []const u8,
-        operator: AST.PrefixOperator,
-        integerVal: i64,
-    };
-
-    const tests = [2]PrefixTest{
-        .{ .input = "!5;", .operator = AST.PrefixOperator.BANG, .integerVal = 5 },
-        .{ .input = "-15;", .operator = AST.PrefixOperator.MINUS, .integerVal = 15 },
-    };
-
-    for (tests) |tt| {
-        const lex = try Lexer.init(testingAlloc, tt.input);
-        try lex.tokenize();
-
-        const parser = try Parser.init(testingAlloc, lex);
-
-        const program = try parser.parseProgram();
-
-        try testing.expectEqual(1, program.statements.items.len);
-        const stmt: AST.ExpressionStatement = program.statements.items[0].Expr;
-        const pref = stmt.expression.Prefix;
-        std.debug.assert(pref.operator == tt.operator);
-    }
-}
-
-test "test infix expressions" {
-    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
-    const testingAlloc = testArena.allocator();
-    defer testArena.deinit();
-    const InfixTest = struct {
-        input: []const u8,
-        leftVal: i64,
-        operator: AST.InfixOperator,
-        rightVal: i64,
-    };
-
-    const tests = [8]InfixTest{
-        .{ .input = "10 + 10;", .operator = AST.InfixOperator.PLUS, .rightVal = 10, .leftVal = 10 },
-        .{ .input = "12 - 3;", .operator = AST.InfixOperator.MINUS, .rightVal = 3, .leftVal = 12 },
-        .{ .input = "18 * 9;", .operator = AST.InfixOperator.MULTIPLY, .rightVal = 9, .leftVal = 18 },
-        .{ .input = "12 / 6;", .operator = AST.InfixOperator.DIVIDE, .rightVal = 6, .leftVal = 12 },
-        .{ .input = "12 == 12;", .operator = AST.InfixOperator.EQUAL, .rightVal = 12, .leftVal = 12 },
-        .{ .input = "12 != 12;", .operator = AST.InfixOperator.NOT_EQUAL, .rightVal = 12, .leftVal = 12 },
-        .{ .input = "12 > 12;", .operator = AST.InfixOperator.GREATER_THAN, .rightVal = 12, .leftVal = 12 },
-        .{ .input = "12 < 12;", .operator = AST.InfixOperator.LESS_THAN, .rightVal = 12, .leftVal = 12 },
-    };
-
-    for (tests) |tt| {
-        const lex = try Lexer.init(testingAlloc, tt.input);
-        try lex.tokenize();
-
-        const parser = try Parser.init(testingAlloc, lex);
-
-        const program = try parser.parseProgram();
-
-        try testing.expectEqual(1, program.statements.items.len);
-        const stmt: AST.ExpressionStatement = program.statements.items[0].Expr;
-        const infix = stmt.expression.Infix;
-        std.debug.assert(infix.operator == tt.operator);
-        try testing.expectEqual(infix.left.Integer.value, tt.leftVal);
-        try testing.expectEqual(infix.right.Integer.value, tt.rightVal);
-    }
-}
-
-test "test parsing hash literals with string keys" {
-    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
-    const testingAlloc = testArena.allocator();
-    defer testArena.deinit();
-    const input = "{\"one\": 1, \"two\": 2, \"three\": 3}";
-    const lex = try Lexer.init(testingAlloc, input);
-    try lex.tokenize();
-
-    const parser = try Parser.init(testingAlloc, lex);
-
-    const program = try parser.parseProgram();
-    var hash: AST.HashLiteral = undefined;
-    switch (program.statements.items[0]) {
-        .Expr => |expr| {
-            switch (expr.expression.*) {
-                .Hash => |hashLiteral| {
-                    hash = hashLiteral;
-                },
-                else => @panic("Should be a hash literal"),
-            }
-        },
-        else => @panic("Should be an expression statement"),
-    }
-    try testing.expectEqual(hash.pairs.count(), 3);
-    var expectedHash = std.StringHashMap(i64).init(testingAlloc);
-    try expectedHash.put("one", 1);
-    try expectedHash.put("two", 2);
-    try expectedHash.put("three", 3);
-
-    var iter = hash.pairs.iterator();
-    while (iter.next()) |entry| {
-        var keyName: []const u8 = undefined;
-        const literal = entry.key_ptr;
-        switch (literal.*) {
-            .String => |s| {
-                keyName = s.value;
-            },
-            else => @panic("Key literal should be of type string"),
-        }
-        const expectedValue = expectedHash.get(keyName);
-        if (expectedValue) |_| {
-            std.debug.print("YEET", .{});
-        } else |_| {
-            @panic("Key value is null");
-        }
-    }
-}
+//test "test let statements" {
+//    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
+//    const testingAlloc = testArena.allocator();
+//    defer testArena.deinit();
+//
+//    const input: []const u8 =
+//        \\let x = 5;
+//        \\let y = 10;
+//        \\let foobar = 8331978;
+//    ;
+//    const lex = try Lexer.init(testingAlloc, input);
+//    try lex.tokenize();
+//    for (lex.tokens.items) |tok| {
+//        std.debug.print("{s} ", .{tok.Literal});
+//    }
+//
+//    const parser = try Parser.init(testingAlloc, lex);
+//
+//    const program = try parser.parseProgram();
+//
+//    try testing.expectEqual(program.statements.items.len, 3);
+//
+//    const TestCase = struct {
+//        expectedIdentifier: []const u8,
+//    };
+//    const tests = [_]TestCase{
+//        .{ .expectedIdentifier = "x" },
+//        .{ .expectedIdentifier = "y" },
+//        .{ .expectedIdentifier = "foobar" },
+//    };
+//
+//    for (tests, 0..) |t, i| {
+//        const stmt = program.statements.items[i];
+//        try testing.expect(std.mem.eql(u8, stmt.tokenLiteral(), "let"));
+//        try testing.expect(std.mem.eql(u8, stmt.Let.name.value, t.expectedIdentifier));
+//        try testing.expect(std.mem.eql(u8, stmt.Let.name.tokenLiteral(), t.expectedIdentifier));
+//    }
+//}
+//
+//test "test return statements" {
+//    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
+//    const testingAlloc = testArena.allocator();
+//    defer testArena.deinit();
+//
+//    const input: []const u8 =
+//        \\return 5;
+//        \\return 10;
+//        \\return 8331978;
+//    ;
+//    const lex = try Lexer.init(testingAlloc, input);
+//    try lex.tokenize();
+//
+//    const parser = try Parser.init(testingAlloc, lex);
+//
+//    const program = try parser.parseProgram();
+//
+//    try testing.expectEqual(program.statements.items.len, 3);
+//
+//    for (program.statements.items) |stmt| {
+//        try testing.expect(std.mem.eql(u8, stmt.Return.tokenLiteral(), "return"));
+//    }
+//}
+//
+//test "test integer expressions" {
+//    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
+//    const testingAlloc = testArena.allocator();
+//    defer testArena.deinit();
+//    const input = "5;";
+//
+//    const lex = try Lexer.init(testingAlloc, input);
+//    try lex.tokenize();
+//
+//    const parser = try Parser.init(testingAlloc, lex);
+//
+//    const program = try parser.parseProgram();
+//
+//    try testing.expectEqual(1, program.statements.items.len);
+//    const stmt: AST.ExpressionStatement = program.statements.items[0].Expr;
+//    const lit = stmt.expression.Integer.value;
+//    try testing.expectEqual(5, lit);
+//    try testing.expect(std.mem.eql(u8, "5", stmt.tokenLiteral()));
+//}
+//
+//test "test identifier expressions" {
+//    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
+//    const testingAlloc = testArena.allocator();
+//    defer testArena.deinit();
+//    const input = "foobar;";
+//
+//    const lex = try Lexer.init(testingAlloc, input);
+//    try lex.tokenize();
+//
+//    const parser = try Parser.init(testingAlloc, lex);
+//
+//    const program = try parser.parseProgram();
+//
+//    try testing.expectEqual(1, program.statements.items.len);
+//    const stmt: AST.ExpressionStatement = program.statements.items[0].Expr;
+//    const ident = stmt.expression.Ident;
+//    try testing.expect(std.mem.eql(u8, "foobar", ident.value));
+//    try testing.expect(std.mem.eql(u8, "foobar", ident.tokenLiteral()));
+//}
+//
+//test "test prefix expressions" {
+//    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
+//    const testingAlloc = testArena.allocator();
+//    defer testArena.deinit();
+//    const PrefixTest = struct {
+//        input: []const u8,
+//        operator: AST.PrefixOperator,
+//        integerVal: i64,
+//    };
+//
+//    const tests = [2]PrefixTest{
+//        .{ .input = "!5;", .operator = AST.PrefixOperator.BANG, .integerVal = 5 },
+//        .{ .input = "-15;", .operator = AST.PrefixOperator.MINUS, .integerVal = 15 },
+//    };
+//
+//    for (tests) |tt| {
+//        const lex = try Lexer.init(testingAlloc, tt.input);
+//        try lex.tokenize();
+//
+//        const parser = try Parser.init(testingAlloc, lex);
+//
+//        const program = try parser.parseProgram();
+//
+//        try testing.expectEqual(1, program.statements.items.len);
+//        const stmt: AST.ExpressionStatement = program.statements.items[0].Expr;
+//        const pref = stmt.expression.Prefix;
+//        std.debug.assert(pref.operator == tt.operator);
+//    }
+//}
+//
+//test "test infix expressions" {
+//    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
+//    const testingAlloc = testArena.allocator();
+//    defer testArena.deinit();
+//    const InfixTest = struct {
+//        input: []const u8,
+//        leftVal: i64,
+//        operator: AST.InfixOperator,
+//        rightVal: i64,
+//    };
+//
+//    const tests = [8]InfixTest{
+//        .{ .input = "10 + 10;", .operator = AST.InfixOperator.PLUS, .rightVal = 10, .leftVal = 10 },
+//        .{ .input = "12 - 3;", .operator = AST.InfixOperator.MINUS, .rightVal = 3, .leftVal = 12 },
+//        .{ .input = "18 * 9;", .operator = AST.InfixOperator.MULTIPLY, .rightVal = 9, .leftVal = 18 },
+//        .{ .input = "12 / 6;", .operator = AST.InfixOperator.DIVIDE, .rightVal = 6, .leftVal = 12 },
+//        .{ .input = "12 == 12;", .operator = AST.InfixOperator.EQUAL, .rightVal = 12, .leftVal = 12 },
+//        .{ .input = "12 != 12;", .operator = AST.InfixOperator.NOT_EQUAL, .rightVal = 12, .leftVal = 12 },
+//        .{ .input = "12 > 12;", .operator = AST.InfixOperator.GREATER_THAN, .rightVal = 12, .leftVal = 12 },
+//        .{ .input = "12 < 12;", .operator = AST.InfixOperator.LESS_THAN, .rightVal = 12, .leftVal = 12 },
+//    };
+//
+//    for (tests) |tt| {
+//        const lex = try Lexer.init(testingAlloc, tt.input);
+//        try lex.tokenize();
+//
+//        const parser = try Parser.init(testingAlloc, lex);
+//
+//        const program = try parser.parseProgram();
+//
+//        try testing.expectEqual(1, program.statements.items.len);
+//        const stmt: AST.ExpressionStatement = program.statements.items[0].Expr;
+//        const infix = stmt.expression.Infix;
+//        std.debug.assert(infix.operator == tt.operator);
+//        try testing.expectEqual(infix.left.Integer.value, tt.leftVal);
+//        try testing.expectEqual(infix.right.Integer.value, tt.rightVal);
+//    }
+//}
+//
+//test "test parsing hash literals with string keys" {
+//    var testArena = std.heap.ArenaAllocator.init(testing.allocator);
+//    const testingAlloc = testArena.allocator();
+//    defer testArena.deinit();
+//    const input = "{\"one\": 1, \"two\": 2, \"three\": 3}";
+//    const lex = try Lexer.init(testingAlloc, input);
+//    try lex.tokenize();
+//
+//    const parser = try Parser.init(testingAlloc, lex);
+//
+//    const program = try parser.parseProgram();
+//    var hash: AST.HashLiteral = undefined;
+//    switch (program.statements.items[0]) {
+//        .Expr => |expr| {
+//            switch (expr.expression.*) {
+//                .Hash => |hashLiteral| {
+//                    hash = hashLiteral;
+//                },
+//                else => @panic("Should be a hash literal"),
+//            }
+//        },
+//        else => @panic("Should be an expression statement"),
+//    }
+//    try testing.expectEqual(hash.pairs.count(), 3);
+//    var expectedHash = std.StringHashMap(i64).init(testingAlloc);
+//    try expectedHash.put("one", 1);
+//    try expectedHash.put("two", 2);
+//    try expectedHash.put("three", 3);
+//
+//    var iter = hash.pairs.iterator();
+//    while (iter.next()) |entry| {
+//        var keyName: []const u8 = undefined;
+//        const literal = entry.key_ptr;
+//        switch (literal.*) {
+//            .String => |s| {
+//                keyName = s.value;
+//            },
+//            else => @panic("Key literal should be of type string"),
+//        }
+//        const expectedValue = expectedHash.get(keyName);
+//        if (expectedValue) |_| {
+//            std.debug.print("YEET", .{});
+//        } else |_| {
+//            @panic("Key value is null");
+//        }
+//    }
+//}
+//

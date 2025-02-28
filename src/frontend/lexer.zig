@@ -30,7 +30,7 @@ pub fn init(alloc: std.mem.Allocator, input: []const u8) !*Lexer {
     return l;
 }
 
-fn tokenize(self: *Lexer) !void {
+pub fn tokenize(self: *Lexer) !void {
     var tok = tokens.Token{
         .Literal = "",
         .Type = tokens.TokenType.ILLEGAL,
@@ -38,7 +38,7 @@ fn tokenize(self: *Lexer) !void {
         .Line = self.line,
     };
     while (tok.Type != tokens.TokenType.EOF) {
-        tok = try self.nextToken();
+        tok = self.nextToken();
     }
 }
 
@@ -273,7 +273,7 @@ test "test lexer" {
     const lex = try Lexer.init(testingAlloc, input);
 
     for (testTokens) |testToken| {
-        const tok = try lex.nextToken();
+        const tok = lex.nextToken();
         try testing.expectEqual(testToken.expectedType, tok.Type);
         try testing.expect(std.mem.eql(u8, testToken.expectedLiteral, tok.Literal));
     }

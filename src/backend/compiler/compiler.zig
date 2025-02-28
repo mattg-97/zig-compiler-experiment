@@ -35,9 +35,8 @@ pub fn init(alloc: std.mem.Allocator) !*Compiler {
 
 pub fn parse(alloc: std.mem.Allocator, input: []const u8) !AST.Program {
     const lex = try Lexer.init(alloc, input);
-    try lex.tokenize();
 
-    const parser = try Parser.init(alloc, lex);
+    var parser = try Parser.init(alloc, lex);
 
     const program = try parser.parseProgram();
 
@@ -49,7 +48,7 @@ pub fn compile(_: *Compiler, _: AST.Program) CompilationError!void {
 }
 
 pub fn byteCode(self: *Compiler) CompilationError!*ByteCode {
-    const ptr = try self.alloc.create(ByteCode);
+    const ptr = self.alloc.create(ByteCode) catch return CompilationError.Unknown;
     ptr.* = .{
         .constants = self.constants,
         .instructions = self.instructions,
@@ -66,9 +65,9 @@ const CompilerTestCases = struct {
     expectedInstructions: []Code.Instructions,
 };
 
-fn runCompilerTests(alloc: std.mem.Allocator, tests: []CompilerTestCases) !void {
+fn runCompilerTests(alloc: std.mem.Allocator, tests: []const CompilerTestCases) !void {
     for (tests) |t| {
-        const program = parse(t.input);
+        const program = try parse(alloc, t.input);
 
         const compiler = try init(alloc);
 
@@ -76,14 +75,14 @@ fn runCompilerTests(alloc: std.mem.Allocator, tests: []CompilerTestCases) !void 
 
         const bc = try compiler.byteCode();
 
-        try testInstructions(t.expectedInstructions, bc.instructions.items);
+        try testInstructions(alloc, t.expectedInstructions, bc.instructions.items);
 
         try testConstants(t.expectedConstants, bc.constants.items);
     }
 }
 
-fn testInstructions(expected: []Code.Instructions, actual: Code.Instructions) !void {
-    const concatted = concatInstructions(expected);
+fn testInstructions(alloc: std.mem.Allocator, expected: []Code.Instructions, actual: Code.Instructions) !void {
+    const concatted = try concatInstructions(alloc, expected);
     try testing.expectEqual(actual.len, concatted.len);
     for (concatted, 0..) |ins, i| {
         try testing.expectEqual(actual[i], ins);
@@ -98,7 +97,6 @@ fn testConstants(expected: []ConstantTypes, actual: []Object) !void {
             .integer => |int| {
                 try testIntegerObject(int, actual[i]);
             },
-            else => return,
         }
     }
 }
@@ -113,11 +111,11 @@ fn testIntegerObject(expected: i64, actual: Object) !void {
     try testing.expectEqual(expected, integer.value);
 }
 
-fn concatInstructions(alloc: std.mem.Allocator, s: []Code.Instructions) Code.Instructions {
+pub fn concatInstructions(alloc: std.mem.Allocator, s: []Code.Instructions) CompilationError!Code.Instructions {
     var arrList = std.ArrayList(u8).init(alloc);
     for (s) |ins| {
         for (ins) |b| {
-            try arrList.append(b);
+            arrList.append(b) catch return CompilationError.Unknown;
         }
     }
     return arrList.items;
@@ -128,17 +126,24 @@ test "test integer arithmetic" {
     const testingAlloc = testArena.allocator();
     defer testArena.deinit();
 
+    var instruction1 = Code.Make(.OpConstant, &[_]u16{0});
+    var instruction2 = Code.Make(.OpConstant, &[_]u16{1});
+
+    var expectedConsts = [2]ConstantTypes{
+        .{ .integer = 1 },
+        .{ .integer = 2 },
+    };
+
+    var expectedInstructions = [2][]const u8{
+        instruction1[0..instruction1.len],
+        instruction2[0..instruction2.len],
+    };
+
     const testCases = [_]CompilerTestCases{.{
         .input = "1 + 2",
-        .expectedConstants = [_]ConstantTypes{
-            .{ .integer = 1 },
-            .{ .integer = 2 },
-        },
-        .expectedInstructions = []Code.Instructions{
-            Code.Make(.OpConstant, 0),
-            Code.Make(.OpConstant, 1),
-        },
+        .expectedConstants = expectedConsts[0..expectedConsts.len],
+        .expectedInstructions = expectedInstructions[0..expectedInstructions.len],
     }};
 
-    try runCompilerTests(testingAlloc, testCases);
+    try runCompilerTests(testingAlloc, &testCases);
 }
